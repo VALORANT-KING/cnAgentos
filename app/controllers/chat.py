@@ -126,7 +126,7 @@ class ChatSendHandler(ChatBaseHandler):
                 ChatMessageRepository.add(session_id, "assistant", f"未找到数字员工 {employee_alias} 或该员工已禁用")
                 return self._session_response(session_id)
             if employee["category"] == "AI" and employee["agent_type"] == "chat":
-                reply = self._call_ai_employee(employee, employee_param, session_id)
+                reply = self._call_ai_employee(employee, employee_param, session_id, model_id)
                 ChatMessageRepository.add(session_id, "assistant", reply, msg_type="employee_call", employee_id=employee["id"])
                 if session.get("title") == "新对话":
                     ChatSessionRepository.update_title(session_id, employee_param[:20] or employee["name"])
@@ -179,6 +179,74 @@ class ChatSendHandler(ChatBaseHandler):
             return "@" + m2.group(1), ""
         return None, None
 
+    @staticmethod
+    def _format_api_result(employee, resp_json):
+        try:
+            name = employee.get("name", "")
+            data = resp_json.get("data", {})
+            if name == "音乐" or employee.get("api_service_id", 0) == 1:
+                song = data.get("song", "")
+                singer = data.get("singer", "")
+                cover = data.get("cover", "")
+                music_url = data.get("Music", "")
+                song_id = data.get("id", "")
+                card = f"""🎵 **随机音乐推荐**
+
+<div style="display:flex;align-items:center;gap:16px;margin:12px 0;padding:16px;background:linear-gradient(135deg,#667eea,#764ba2);border-radius:12px;color:#fff;">
+  <img src="{cover}" style="width:80px;height:80px;border-radius:8px;object-fit:cover;" onerror="this.style.display='none'">
+  <div>
+    <div style="font-size:18px;font-weight:bold;">{song}</div>
+    <div style="font-size:14px;opacity:0.9;">🎤 {singer}</div>
+    <div style="margin-top:8px;">
+      <a href="{music_url}" target="_blank" style="display:inline-block;padding:6px 16px;background:#fff;color:#667eea;border-radius:20px;text-decoration:none;font-size:13px;font-weight:bold;">▶ 立即收听</a>
+    </div>
+  </div>
+</div>
+
+> 🆔 歌曲ID: {song_id}"""
+                return card
+
+            if name == "天气" or "temp" in data or "weather" in data:
+                city = data.get("city", data.get("cityEnglish", ""))
+                weather = data.get("weather", "")
+                temp = data.get("temp", "")
+                tempn = data.get("tempn", "")
+                wind = data.get("wind", "")
+                cur = data.get("current", {})
+                humidity = cur.get("humidity", "")
+                air = cur.get("air", "")
+                time = cur.get("time", data.get("time", ""))
+
+                weather_icons = {"晴": "☀️", "多云": "⛅", "阴": "☁️", "雨": "🌧️", "雪": "❄️", "雾": "🌫️", "风": "🌬️"}
+                icon = "🌡️"
+                for kw, emoji in weather_icons.items():
+                    if kw in weather:
+                        icon = emoji
+                        break
+
+                card = f"""🌤️ **{city} 天气预报**
+
+<div style="display:flex;align-items:center;gap:20px;margin:12px 0;padding:20px;background:linear-gradient(135deg,#43e97b,#38f9d7);border-radius:12px;color:#333;">
+  <div style="font-size:48px;">{icon}</div>
+  <div>
+    <div style="font-size:32px;font-weight:bold;">{temp}°C</div>
+    <div style="font-size:16px;">{weather}</div>
+  </div>
+  <div style="font-size:13px;line-height:1.8;">
+    最低: {tempn}°C<br>
+    风力: {wind}<br>
+    湿度: {humidity}<br>
+    空气质量: {air}
+  </div>
+</div>
+
+> 📅 {time}"""
+                return card
+        except Exception:
+            pass
+        formatted = json.dumps(resp_json, ensure_ascii=False, indent=2)
+        return f"🌐 **{employee.get('name','')}** 返回数据：\n\n```json\n{formatted}\n```"
+
     def _call_api_employee(self, employee, param):
         import requests
         try:
@@ -201,17 +269,19 @@ class ChatSendHandler(ChatBaseHandler):
             resp = requests.get(url, headers=safe_headers, timeout=10, verify=False)
             if resp.status_code == 200:
                 data = resp.json()
-                formatted = json.dumps(data, ensure_ascii=False, indent=2)
-                return f"🌐 **{employee['name']}** 返回数据：\n\n```json\n{formatted}\n```"
+                return ChatSendHandler._format_api_result(employee, data)
             else:
                 return f"❌ API 请求失败 (HTTP {resp.status_code})"
         except Exception as e:
             return f"❌ API 调用出错: {str(e)}"
 
-    def _call_ai_employee(self, employee, param, session_id):
-        default_model = ModelEngineRepository.get_default()
-        if not default_model:
-            return "系统没有配置默认模型，请联系管理员"
+    def _call_ai_employee(self, employee, param, session_id, model_id=0):
+        specified_model = None
+        if model_id:
+            specified_model = ModelEngineRepository.get_model_by_id(model_id)
+        active_model = specified_model or ModelEngineRepository.get_default()
+        if not active_model:
+            return "系统没有配置可用模型，请在后台模型引擎中配置"
         if not param:
             return f"你好！我是**{employee['name']}**，请问有什么可以帮助你的？"
 
@@ -226,27 +296,27 @@ class ChatSendHandler(ChatBaseHandler):
             from openai import OpenAI
             import httpx
             client = OpenAI(
-                api_key=default_model.get("api_key") or "sk-no-key-required",
-                base_url=default_model.get("base_url") or "https://api.openai.com/v1",
+                api_key=active_model.get("api_key") or "sk-no-key-required",
+                base_url=active_model.get("base_url") or "https://api.openai.com/v1",
                 http_client=httpx.Client(timeout=httpx.Timeout(15.0, connect=5.0))
             )
             resp = client.chat.completions.create(
-                model=default_model.get("model_name") or "gpt-3.5-turbo",
+                model=active_model.get("model_name") or "gpt-3.5-turbo",
                 messages=messages,
-                max_tokens=default_model.get("max_tokens", 2048),
-                temperature=default_model.get("temperature", 0.7)
+                max_tokens=active_model.get("max_tokens", 2048),
+                temperature=active_model.get("temperature", 0.7)
             )
             reply = resp.choices[0].message.content
-            self._update_token_stats(default_model, resp)
+            self._update_token_stats(active_model, resp)
             return reply
         except Exception as e:
             err_str = str(e).lower()
             if "timeout" in err_str or "timed out" in err_str:
-                return f"⚠️ **{default_model['name']}** 模型请求超时。请在后台模型引擎中检查该模型的 `base_url` 和 `api_key` 配置是否正确，或切换为可正常访问的模型。"
+                return f"⚠️ **{active_model['name']}** 模型请求超时。请在后台模型引擎中检查该模型的 `base_url` 和 `api_key` 配置是否正确，或切换为可正常访问的模型。"
             if "connection" in err_str or "connect" in err_str or "refused" in err_str:
-                return f"⚠️ **{default_model['name']}** 模型连接失败。请检查 `base_url` 是否正确，该地址是否可正常访问。"
+                return f"⚠️ **{active_model['name']}** 模型连接失败。请检查 `base_url` 是否正确，该地址是否可正常访问。"
             if "401" in err_str or "unauthorized" in err_str or "auth" in err_str:
-                return f"⚠️ **{default_model['name']}** 模型鉴权失败。请检查 `api_key` 是否正确配置。"
+                return f"⚠️ **{active_model['name']}** 模型鉴权失败。请检查 `api_key` 是否正确配置。"
             return f"❌ AI 调用出错: {str(e)}"
 
     def _update_token_stats(self, model, resp):
@@ -340,6 +410,7 @@ class ChatStreamHandler(ChatBaseHandler):
 
         session_id = int(self.get_argument("session_id", 0))
         content = self.get_argument("content", "").strip()
+        model_id = int(self.get_argument("model_id", 0))
 
         if not content or not session_id:
             self.set_header("Content-Type", "text/event-stream; charset=utf-8")
@@ -357,15 +428,18 @@ class ChatStreamHandler(ChatBaseHandler):
                 return
             if employee:
                 if employee["category"] == "AI" and employee["agent_type"] == "chat":
-                    default_model = ModelEngineRepository.get_default()
-                    if not default_model:
+                    specified_model = None
+                    if model_id:
+                        specified_model = ModelEngineRepository.get_model_by_id(model_id)
+                    active_model = specified_model or ModelEngineRepository.get_default()
+                    if not active_model:
                         self.set_header("Content-Type", "text/event-stream; charset=utf-8")
-                        self.write(f"data: {json.dumps({'content': '系统没有配置默认模型', 'done': True})}\n\n")
+                        self.write(f"data: {json.dumps({'content': '系统没有配置可用模型，请在后台模型引擎中配置', 'done': True})}\n\n")
                         self.finish()
                         return
                     prompt = employee.get("prompt", "")
                     ai_messages = [{"role": "system", "content": prompt}, {"role": "user", "content": employee_param or "你好"}]
-                    self._do_sse_stream(session_id, default_model, ai_messages)
+                    self._do_sse_stream(session_id, active_model, ai_messages)
                     return
                 else:
                     api_result = self._call_api_employee(employee, employee_param)
@@ -375,10 +449,13 @@ class ChatStreamHandler(ChatBaseHandler):
                     self.finish()
                     return
 
-        default_model = ModelEngineRepository.get_default()
-        if not default_model:
+        specified_model = None
+        if model_id:
+            specified_model = ModelEngineRepository.get_model_by_id(model_id)
+        active_model = specified_model or ModelEngineRepository.get_default()
+        if not active_model:
             self.set_header("Content-Type", "text/event-stream; charset=utf-8")
-            self.write(f"data: {json.dumps({'content': '系统没有配置默认模型，请联系管理员在后台模型引擎中配置', 'done': True})}\n\n")
+            self.write(f"data: {json.dumps({'content': '系统没有配置可用模型，请在后台模型引擎中配置', 'done': True})}\n\n")
             self.finish()
             return
 
@@ -398,7 +475,7 @@ class ChatStreamHandler(ChatBaseHandler):
             elif msg["role"] == "assistant":
                 messages.insert(0, {"role": "assistant", "content": msg["content"]})
 
-        self._do_sse_stream(session_id, default_model, messages)
+        self._do_sse_stream(session_id, active_model, messages)
 
     def _do_sse_stream(self, session_id, model, messages):
         self.set_header("Content-Type", "text/event-stream; charset=utf-8")
@@ -471,8 +548,7 @@ class ChatStreamHandler(ChatBaseHandler):
             resp = requests.get(url, headers=safe_headers, timeout=10, verify=False)
             if resp.status_code == 200:
                 data = resp.json()
-                formatted = json.dumps(data, ensure_ascii=False, indent=2)
-                return f"🌐 **{employee['name']}** 返回数据：\n\n```json\n{formatted}\n```"
+                return ChatSendHandler._format_api_result(employee, data)
             else:
                 return f"❌ API 请求失败 (HTTP {resp.status_code})"
         except Exception as e:
