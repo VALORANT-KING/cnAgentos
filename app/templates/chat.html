@@ -1,0 +1,456 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>智能问数 - AI智能瞭望与智能问数系统</title>
+    <link rel="stylesheet" href="{{ static_url('dist/bootstrap-5.3.8-dist/css/bootstrap.min.css') }}">
+    <link rel="stylesheet" href="{{ static_url('dist/fontawesome-free-5.15.4-web/css/all.min.css') }}">
+    <link rel="stylesheet" href="{{ static_url('css/base.css') }}">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        html, body { height: 100%; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; background: #f5f5f5; }
+        .app-container { display: flex; height: 100vh; width: 100%; }
+        .sidebar { width: 300px; min-width: 300px; background: #fff; border-right: 1px solid #e8e8e8; display: flex; flex-direction: column; }
+        .sidebar-header { padding: 16px 20px; border-bottom: 1px solid #e8e8e8; display: flex; align-items: center; justify-content: space-between; }
+        .sidebar-header h3 { font-size: 16px; font-weight: 600; color: #333; margin: 0; }
+        .sidebar-header .user-badge { font-size: 13px; color: #999; display: flex; align-items: center; gap: 6px; }
+        .sidebar-body { flex: 1; overflow-y: auto; }
+        .model-switch { padding: 12px 20px; border-bottom: 1px solid #f0f0f0; }
+        .model-switch select { width: 100%; padding: 8px 12px; border: 1px solid #ddd; border-radius: 6px; font-size: 13px; outline: none; background: #fafafa; }
+        .session-list { padding: 8px 0; }
+        .session-item { padding: 10px 20px; cursor: pointer; display: flex; align-items: center; justify-content: space-between; gap: 8px; border-left: 3px solid transparent; transition: all 0.2s; }
+        .session-item:hover { background: #f5f8ff; }
+        .session-item.active { background: #e8f0fe; border-left-color: #1e9fff; }
+        .session-item .title { flex: 1; font-size: 13px; color: #333; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .session-item .del-btn { color: #ccc; font-size: 12px; cursor: pointer; visibility: hidden; }
+        .session-item:hover .del-btn { visibility: visible; }
+        .session-item .del-btn:hover { color: #ff5722; }
+        .main-area { flex: 1; display: flex; flex-direction: column; background: #fff; }
+        .chat-header { padding: 14px 24px; border-bottom: 1px solid #e8e8e8; display: flex; align-items: center; justify-content: space-between; }
+        .chat-header h4 { font-size: 15px; font-weight: 500; color: #333; margin: 0; }
+        .chat-header .actions { display: flex; gap: 12px; align-items: center; }
+        .chat-header .actions .logout-link { color: #999; font-size: 13px; text-decoration: none; }
+        .chat-header .actions .logout-link:hover { color: #ff5722; }
+        .messages-container { flex: 1; overflow-y: auto; padding: 24px; }
+        .message { margin-bottom: 20px; display: flex; gap: 12px; }
+        .message.user { flex-direction: row-reverse; }
+        .message-avatar { width: 36px; height: 36px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 14px; color: #fff; flex-shrink: 0; }
+        .message.user .message-avatar { background: #1e9fff; }
+        .message.assistant .message-avatar { background: #52c41a; }
+        .message-bubble { max-width: 70%; padding: 12px 16px; border-radius: 12px; font-size: 14px; line-height: 1.6; word-wrap: break-word; }
+        .message.user .message-bubble { background: #1e9fff; color: #fff; border-bottom-right-radius: 4px; }
+        .message.assistant .message-bubble { background: #f0f0f0; color: #333; border-bottom-left-radius: 4px; }
+        .message-bubble p { margin: 0 0 8px; }
+        .message-bubble p:last-child { margin: 0; }
+        .message-bubble code { background: rgba(0,0,0,0.06); padding: 2px 6px; border-radius: 4px; font-size: 13px; }
+        .message-bubble pre { background: #282c34; color: #abb2bf; padding: 12px; border-radius: 8px; overflow-x: auto; font-size: 13px; margin: 8px 0; }
+        .message-bubble pre code { background: none; padding: 0; color: inherit; }
+        .input-area { padding: 16px 24px; border-top: 1px solid #e8e8e8; background: #fff; }
+        .input-row { display: flex; gap: 12px; align-items: flex-end; }
+        .input-wrapper { flex: 1; position: relative; }
+        .input-wrapper textarea { width: 100%; padding: 12px 16px; border: 1px solid #ddd; border-radius: 8px; font-size: 14px; resize: none; outline: none; max-height: 120px; line-height: 1.5; transition: border-color 0.3s; }
+        .input-wrapper textarea:focus { border-color: #1e9fff; box-shadow: 0 0 0 3px rgba(30,159,255,0.1); }
+        .employee-hint { position: absolute; bottom: 100%; left: 0; right: 0; background: #fff; border: 1px solid #e8e8e8; border-radius: 8px 8px 0 0; max-height: 200px; overflow-y: auto; display: none; box-shadow: 0 -4px 12px rgba(0,0,0,0.08); }
+        .employee-hint .hint-item { padding: 10px 16px; cursor: pointer; display: flex; align-items: center; gap: 10px; font-size: 13px; border-bottom: 1px solid #f5f5f5; }
+        .employee-hint .hint-item:hover { background: #f5f8ff; }
+        .employee-hint .hint-item i { width: 20px; text-align: center; color: #1e9fff; }
+        .employee-hint .hint-item .hint-desc { color: #999; font-size: 12px; }
+        .send-btn { padding: 10px 24px; background: linear-gradient(135deg, #1e9fff 0%, #0d7bd4 100%); border: none; border-radius: 8px; color: #fff; font-size: 14px; font-weight: 500; cursor: pointer; transition: all 0.3s; white-space: nowrap; }
+        .send-btn:hover { box-shadow: 0 4px 12px rgba(30,159,255,0.4); }
+        .send-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+        .typing-indicator { display: none; padding: 12px 24px; color: #999; font-size: 13px; align-items: center; gap: 8px; }
+        .typing-indicator .dots { display: flex; gap: 4px; }
+        .typing-indicator .dots span { width: 6px; height: 6px; border-radius: 50%; background: #ccc; animation: bounce 1.4s infinite ease-in-out both; }
+        .typing-indicator .dots span:nth-child(1) { animation-delay: -0.32s; }
+        .typing-indicator .dots span:nth-child(2) { animation-delay: -0.16s; }
+        @keyframes bounce { 0%, 80%, 100% { transform: scale(0); } 40% { transform: scale(1); } }
+        .empty-state { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; color: #ccc; }
+        .empty-state i { font-size: 64px; margin-bottom: 16px; }
+        .empty-state p { font-size: 14px; }
+        .markdown-body h1, .markdown-body h2, .markdown-body h3 { margin-top: 8px; margin-bottom: 8px; font-weight: 600; }
+        .markdown-body h1 { font-size: 18px; }
+        .markdown-body h2 { font-size: 16px; }
+        .markdown-body h3 { font-size: 15px; }
+        .markdown-body ul, .markdown-body ol { padding-left: 20px; margin: 4px 0; }
+        .markdown-body a { color: #1e9fff; }
+        .markdown-body blockquote { border-left: 3px solid #1e9fff; padding-left: 12px; color: #666; margin: 8px 0; }
+    </style>
+</head>
+<body>
+    <div class="app-container">
+        <div class="sidebar">
+            <div class="sidebar-header">
+                <h3><i class="fas fa-robot" style="color:#1e9fff;margin-right:6px;"></i>智能问数</h3>
+                <div class="user-badge"><i class="fas fa-user-circle"></i> {{ username }}</div>
+            </div>
+            <div class="sidebar-body">
+                <div class="model-switch">
+                    <select id="modelSelect">
+                        <option value="0">默认模型</option>
+                    </select>
+                </div>
+                <div style="padding: 8px 20px; display: flex; gap: 8px;">
+                    <button class="btn btn-primary btn-sm" id="newSessionBtn" style="flex:1;font-size:12px;"><i class="fas fa-plus"></i> 新对话</button>
+                </div>
+                <div class="session-list" id="sessionList"></div>
+            </div>
+        </div>
+        <div class="main-area">
+            <div class="chat-header">
+                <h4 id="chatTitle">新对话</h4>
+                <div class="actions">
+                    <a href="/auth/logout" class="logout-link" onclick="return confirm('确定退出吗？')"><i class="fas fa-sign-out-alt"></i> 退出</a>
+                </div>
+            </div>
+            <div class="messages-container" id="messagesContainer">
+                <div class="empty-state" id="emptyState">
+                    <i class="fas fa-comment-dots"></i>
+                    <p>开始一段新对话吧！</p>
+                    <p style="font-size:12px;color:#ddd;">输入 @ 可唤起数字员工</p>
+                </div>
+            </div>
+            <div class="typing-indicator" id="typingIndicator">
+                <span>AI 正在输入</span>
+                <div class="dots"><span></span><span></span><span></span></div>
+            </div>
+            <div class="input-area">
+                <div class="input-row">
+                    <div class="input-wrapper">
+                        <div class="employee-hint" id="employeeHint"></div>
+                        <textarea id="messageInput" rows="2" placeholder="输入消息，使用 @ 唤起数字员工..."></textarea>
+                    </div>
+                    <button class="send-btn" id="sendBtn"><i class="fas fa-paper-plane"></i> 发送</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    <script src="{{ static_url('dist/bootstrap-5.3.8-dist/js/bootstrap.bundle.min.js') }}"></script>
+    <script src="{{ static_url('js/base.js') }}"></script>
+    <script>
+        var currentSessionId = '{{ session_id }}' || 0;
+        var currentModelId = 0;
+        var employees = [];
+        var isLoading = false;
+
+        function getCookie(name) {
+            var r = document.cookie.match("\\b" + name + "=([^;]*)\\b");
+            return r ? r[1] : undefined;
+        }
+
+        function escapeHtml(text) {
+            var d = document.createElement('div');
+            d.textContent = text;
+            return d.innerHTML;
+        }
+
+        function renderMarkdown(text) {
+            var html = escapeHtml(text);
+            html = html.replace(/### (.+)/g, '<h3>$1</h3>');
+            html = html.replace(/## (.+)/g, '<h2>$1</h2>');
+            html = html.replace(/# (.+)/g, '<h1>$1</h1>');
+            html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+            html = html.replace(/\*(.+?)\*/g, '<em>$1</em>');
+            html = html.replace(/`([^`]+)`/g, '<code>$1</code>');
+            html = html.replace(/```(\w*)\n?([\s\S]*?)```/g, '<pre><code>$2</code></pre>');
+            html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank">$1</a>');
+            html = html.replace(/\n/g, '<br>');
+            return html;
+        }
+
+        function scrollToBottom() {
+            var c = document.getElementById('messagesContainer');
+            c.scrollTop = c.scrollHeight;
+        }
+
+        function showTyping() {
+            document.getElementById('typingIndicator').style.display = 'flex';
+            scrollToBottom();
+        }
+
+        function hideTyping() {
+            document.getElementById('typingIndicator').style.display = 'none';
+        }
+
+        function addMessage(role, content, append) {
+            var container = document.getElementById('messagesContainer');
+            document.getElementById('emptyState').style.display = 'none';
+            var msgDiv = document.getElementById('msg-' + role + '-streaming');
+            if (append && msgDiv) {
+                msgDiv.querySelector('.message-bubble').innerHTML = renderMarkdown(content);
+                scrollToBottom();
+                return;
+            }
+            var html = '<div class="message ' + role + '" id="msg-' + role + '-' + Date.now() + '">';
+            html += '<div class="message-avatar"><i class="fas fa-' + (role === 'user' ? 'user' : 'robot') + '"></i></div>';
+            html += '<div class="message-bubble markdown-body">' + renderMarkdown(content) + '</div></div>';
+            container.insertAdjacentHTML('beforeend', html);
+            scrollToBottom();
+        }
+
+        function addStreamingMessage(role) {
+            var container = document.getElementById('messagesContainer');
+            document.getElementById('emptyState').style.display = 'none';
+            var existing = document.getElementById('msg-' + role + '-streaming');
+            if (existing) return;
+            var html = '<div class="message ' + role + '" id="msg-' + role + '-streaming">';
+            html += '<div class="message-avatar"><i class="fas fa-' + (role === 'user' ? 'user' : 'robot') + '"></i></div>';
+            html += '<div class="message-bubble markdown-body"></div></div>';
+            container.insertAdjacentHTML('beforeend', html);
+            scrollToBottom();
+        }
+
+        function updateStreamingContent(content) {
+            var msgDiv = document.getElementById('msg-assistant-streaming');
+            if (msgDiv) {
+                msgDiv.querySelector('.message-bubble').innerHTML = renderMarkdown(content);
+                scrollToBottom();
+            }
+        }
+
+        function removeStreamingMessage() {
+            var msgDiv = document.getElementById('msg-assistant-streaming');
+            if (msgDiv) msgDiv.remove();
+        }
+
+        function loadSessions() {
+            fetch('/api/chat/sessions').then(function(r){ return r.json(); }).then(function(res){
+                if(res.code === 0){
+                    var list = document.getElementById('sessionList');
+                    list.innerHTML = '';
+                    res.data.forEach(function(s){
+                        var item = document.createElement('div');
+                        item.className = 'session-item' + (currentSessionId == s.id ? ' active' : '');
+                        item.innerHTML = '<div class="title">' + escapeHtml(s.title || '新对话') + '</div>' +
+                            '<span class="del-btn" data-id="' + s.id + '"><i class="fas fa-times"></i></span>';
+                        item.querySelector('.title').addEventListener('click', function(){ switchSession(s.id); });
+                        item.querySelector('.del-btn').addEventListener('click', function(e){
+                            e.stopPropagation(); deleteSession(s.id);
+                        });
+                        list.appendChild(item);
+                    });
+                }
+            });
+        }
+
+        function switchSession(sid) {
+            currentSessionId = sid;
+            document.querySelectorAll('.session-item').forEach(function(el){ el.classList.remove('active'); });
+            document.querySelectorAll('.session-item').forEach(function(el){
+                if(el.querySelector('.del-btn').getAttribute('data-id') == sid) el.classList.add('active');
+            });
+            var container = document.getElementById('messagesContainer');
+            container.querySelectorAll('.message').forEach(function(el){ el.remove(); });
+            document.getElementById('emptyState').style.display = 'flex';
+            document.getElementById('chatTitle').textContent = '对话加载中...';
+            fetch('/api/chat/history?session_id=' + sid).then(function(r){ return r.json(); }).then(function(res){
+                if(res.code === 0 && res.data.length > 0){
+                    document.getElementById('emptyState').style.display = 'none';
+                    res.data.forEach(function(msg){
+                        addMessage(msg.role, msg.content);
+                    });
+                    document.getElementById('chatTitle').textContent = '对话 (' + sid + ')';
+                } else {
+                    document.getElementById('emptyState').style.display = 'flex';
+                    document.getElementById('chatTitle').textContent = '新对话';
+                }
+            });
+            loadSessions();
+        }
+
+        function deleteSession(sid) {
+            if(!confirm('确定删除此对话？')) return;
+            fetch('/api/chat/session/delete', { method:'POST', headers:{'X-XSRFToken':getCookie('_xsrf'),'Content-Type':'application/x-www-form-urlencoded'}, body:'id='+sid })
+            .then(function(r){ return r.json(); }).then(function(res){
+                if(res.code === 0){
+                    if(currentSessionId == sid) { currentSessionId = 0; location.reload(); }
+                    else loadSessions();
+                }
+            });
+        }
+
+        function loadEmployees() {
+            fetch('/api/employee/list').then(function(r){ return r.json(); }).then(function(res){
+                if(res.code === 0) employees = res.data;
+            });
+        }
+
+        function loadModels() {
+            fetch('/api/model/list').then(function(r){ return r.json(); }).then(function(res){
+                if(res.code === 0){
+                    var sel = document.getElementById('modelSelect');
+                    res.data.forEach(function(m){
+                        var opt = document.createElement('option');
+                        opt.value = m.id;
+                        opt.textContent = m.name + (m.is_default ? ' (默认)' : '');
+                        if(m.is_default) opt.selected = true;
+                        sel.appendChild(opt);
+                    });
+                }
+            });
+        }
+
+        function showEmployeeHint() {
+            var input = document.getElementById('messageInput');
+            var hint = document.getElementById('employeeHint');
+            var text = input.value;
+            var atPos = text.lastIndexOf('@');
+            if(atPos >= 0 && (atPos === 0 || text[atPos-1] === ' ' || text[atPos-1] === '\n')){
+                var query = text.substring(atPos + 1);
+                var filtered = employees.filter(function(e){ return e.alias.indexOf('@' + query) >= 0 || e.name.indexOf(query) >= 0; });
+                if(filtered.length > 0){
+                    hint.innerHTML = '';
+                    filtered.forEach(function(e){
+                        var item = document.createElement('div');
+                        item.className = 'hint-item';
+                        item.innerHTML = '<i class="fas ' + (e.icon || 'fa-robot') + '"></i> ' + escapeHtml(e.alias) +
+                            ' <span class="hint-desc">' + escapeHtml(e.description || '') + '</span>';
+                        item.addEventListener('click', function(){
+                            var pre = text.substring(0, atPos);
+                            input.value = pre + e.alias + ' ';
+                            input.focus();
+                            hint.style.display = 'none';
+                        });
+                        hint.appendChild(item);
+                    });
+                    hint.style.display = 'block';
+                    return;
+                }
+            }
+            hint.style.display = 'none';
+        }
+
+        function sendMessage() {
+            if(isLoading) return;
+            var input = document.getElementById('messageInput');
+            var content = input.value.trim();
+            if(!content) return;
+            input.value = '';
+            document.getElementById('employeeHint').style.display = 'none';
+            isLoading = true;
+            document.getElementById('sendBtn').disabled = true;
+
+            addMessage('user', content);
+
+            if(!currentSessionId || currentSessionId === '0'){
+                fetch('/api/chat/session/add', {
+                    method:'POST',
+                    headers:{'X-XSRFToken':getCookie('_xsrf'),'Content-Type':'application/x-www-form-urlencoded'},
+                    body:'title=' + encodeURIComponent(content.substring(0,20)) + '&model_id=' + currentModelId
+                }).then(function(r){ return r.json(); }).then(function(res){
+                    if(res.code === 0){
+                        currentSessionId = res.data.id;
+                        doStreamChat(currentSessionId, content);
+                    } else {
+                        addMessage('assistant', '创建会话失败: ' + res.msg);
+                        isLoading = false;
+                        document.getElementById('sendBtn').disabled = false;
+                    }
+                });
+            } else {
+                doStreamChat(currentSessionId, content);
+            }
+        }
+
+        function doStreamChat(sid, content) {
+            var employeeAlias = null;
+            employees.forEach(function(e){
+                if(content.indexOf(e.alias) === 0) { employeeAlias = e.alias; }
+            });
+            if(employeeAlias){
+                showTyping();
+                fetch('/api/chat/send', {
+                    method:'POST',
+                    headers:{'X-XSRFToken':getCookie('_xsrf'),'Content-Type':'application/x-www-form-urlencoded'},
+                    body:'session_id=' + sid + '&content=' + encodeURIComponent(content) + '&model_id=' + currentModelId
+                }).then(function(r){ return r.json(); }).then(function(res){
+                    hideTyping();
+                    if(res.code === 0 && res.data && res.data.messages){
+                        var msgs = res.data.messages;
+                        var last = msgs[msgs.length - 1];
+                        if(last && last.role === 'assistant') addMessage('assistant', last.content);
+                    } else {
+                        addMessage('assistant', res.msg || '请求失败');
+                    }
+                    loadSessions();
+                    isLoading = false;
+                    document.getElementById('sendBtn').disabled = false;
+                }).catch(function(){
+                    hideTyping();
+                    addMessage('assistant', '网络请求失败');
+                    isLoading = false;
+                    document.getElementById('sendBtn').disabled = false;
+                });
+            } else {
+                showTyping();
+                addStreamingMessage('assistant');
+                var fullContent = '';
+                var url = '/api/chat/stream?session_id=' + sid + '&content=' + encodeURIComponent(content) + '&model_id=' + currentModelId;
+                var evtSource = new EventSource(url);
+                evtSource.onmessage = function(event){
+                    try {
+                        var data = JSON.parse(event.data);
+                        if(data.error){
+                            hideTyping();
+                            removeStreamingMessage();
+                            addMessage('assistant', data.error);
+                            evtSource.close();
+                            isLoading = false;
+                            document.getElementById('sendBtn').disabled = false;
+                            return;
+                        }
+                        if(data.done){
+                            hideTyping();
+                            evtSource.close();
+                            loadSessions();
+                            isLoading = false;
+                            document.getElementById('sendBtn').disabled = false;
+                            return;
+                        }
+                        fullContent += data.content || '';
+                        updateStreamingContent(fullContent);
+                    } catch(e){}
+                };
+                evtSource.onerror = function(){
+                    hideTyping();
+                    if(!fullContent) removeStreamingMessage();
+                    evtSource.close();
+                    loadSessions();
+                    isLoading = false;
+                    document.getElementById('sendBtn').disabled = false;
+                };
+            }
+        }
+
+        document.addEventListener('DOMContentLoaded', function(){
+            loadSessions();
+            loadEmployees();
+            loadModels();
+            if(currentSessionId && currentSessionId !== '0'){
+                switchSession(parseInt(currentSessionId));
+            }
+            document.getElementById('newSessionBtn').addEventListener('click', function(){
+                currentSessionId = 0;
+                document.getElementById('chatTitle').textContent = '新对话';
+                document.querySelectorAll('.session-item').forEach(function(el){ el.classList.remove('active'); });
+                var container = document.getElementById('messagesContainer');
+                container.querySelectorAll('.message').forEach(function(el){ el.remove(); });
+                document.getElementById('emptyState').style.display = 'flex';
+            });
+            document.getElementById('sendBtn').addEventListener('click', sendMessage);
+            document.getElementById('messageInput').addEventListener('keydown', function(e){
+                if(e.key === 'Enter' && !e.shiftKey){ e.preventDefault(); sendMessage(); }
+            });
+            document.getElementById('messageInput').addEventListener('input', showEmployeeHint);
+            document.getElementById('modelSelect').addEventListener('change', function(){
+                currentModelId = parseInt(this.value);
+            });
+            document.addEventListener('click', function(e){
+                if(!e.target.closest('.input-wrapper')) document.getElementById('employeeHint').style.display = 'none';
+            });
+        });
+
+        var xsrfForm = '{% module xsrf_form_html() %}';
+    </script>
+</body>
+</html>

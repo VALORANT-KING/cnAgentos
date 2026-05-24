@@ -63,6 +63,16 @@ class ModelEngineRepository:
                 "description": row["description"], "create_at": row["create_at"]
             }
 
+    get_default = get_default_engine
+
+    @staticmethod
+    def get_all_models():
+        return ModelEngineRepository.get_all_engines(page=1, page_size=999)[0]
+
+    @staticmethod
+    def get_model_by_id(model_id):
+        return ModelEngineRepository.get_engine_by_id(model_id)
+
     @staticmethod
     def add_engine(name: str, provider: str, base_url: str, api_key: str,
                    model_name: str, engine_type: str, max_tokens: int,

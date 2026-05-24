@@ -71,6 +71,16 @@ from app.controllers.admin import AdminEmployeeListHandler
 from app.controllers.admin import AdminEmployeeAddHandler
 from app.controllers.admin import AdminEmployeeUpdateHandler
 from app.controllers.admin import AdminEmployeeDeleteHandler
+from app.controllers.chat import ChatIndexHandler
+from app.controllers.chat import ChatSessionListHandler
+from app.controllers.chat import ChatSessionAddHandler
+from app.controllers.chat import ChatSessionDeleteHandler
+from app.controllers.chat import ChatHistoryHandler
+from app.controllers.chat import ChatEmployeeListHandler
+from app.controllers.chat import ChatModelListHandler
+from app.controllers.chat import ChatSendHandler
+from app.controllers.chat import ChatStreamHandler
+from app.controllers.auth import RegisterHandler
 from app.models.db import init_db
 
 
@@ -190,7 +200,17 @@ def make_app():
             (r"/admin/employee/list", AdminEmployeeListHandler),
             (r"/admin/employee/add", AdminEmployeeAddHandler),
             (r"/admin/employee/update", AdminEmployeeUpdateHandler),
-            (r"/admin/employee/delete", AdminEmployeeDeleteHandler)
+            (r"/admin/employee/delete", AdminEmployeeDeleteHandler),
+            (r"/chat", ChatIndexHandler),
+            (r"/api/chat/sessions", ChatSessionListHandler),
+            (r"/api/chat/session/add", ChatSessionAddHandler),
+            (r"/api/chat/session/delete", ChatSessionDeleteHandler),
+            (r"/api/chat/history", ChatHistoryHandler),
+            (r"/api/chat/send", ChatSendHandler),
+            (r"/api/chat/stream", ChatStreamHandler),
+            (r"/api/employee/list", ChatEmployeeListHandler),
+            (r"/api/model/list", ChatModelListHandler),
+            (r"/auth/register", RegisterHandler)
         ], **settings)
 
 if __name__ == "__main__":

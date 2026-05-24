@@ -335,6 +335,36 @@ def init_db():
         except Exception:
             pass
 
+        # 任务八：对话会话表
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS chat_sessions(
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL,
+                title TEXT DEFAULT '新对话',
+                model_id INTEGER DEFAULT 0,
+                create_at TEXT NOT NULL DEFAULT(datetime('now')),
+                FOREIGN KEY (user_id) REFERENCES users(id)
+            )
+            """
+        )
+
+        # 任务八：对话消息表
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS chat_messages(
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                session_id INTEGER NOT NULL,
+                role TEXT NOT NULL,
+                content TEXT NOT NULL,
+                msg_type TEXT DEFAULT 'text',
+                employee_id INTEGER DEFAULT 0,
+                create_at TEXT NOT NULL DEFAULT(datetime('now')),
+                FOREIGN KEY (session_id) REFERENCES chat_sessions(id)
+            )
+            """
+        )
+
         try:
             cursor = conn.execute("SELECT id FROM watch_sources WHERE name = '百度新闻' LIMIT 1")
             import json
