@@ -361,36 +361,6 @@
         }
 
         function doStreamChat(sid, content) {
-            var employeeAlias = null;
-            employees.forEach(function(e){
-                if(content.indexOf(e.alias) === 0) { employeeAlias = e.alias; }
-            });
-            if(employeeAlias){
-                showTyping();
-                fetch('/api/chat/send', {
-                    method:'POST',
-                    headers:{'X-XSRFToken':getCookie('_xsrf'),'Content-Type':'application/x-www-form-urlencoded'},
-                    body:'session_id=' + sid + '&content=' + encodeURIComponent(content) + '&model_id=' + currentModelId
-                }).then(function(r){ return r.json(); }).then(function(res){
-                    hideTyping();
-                    if(res.code === 0 && res.data && res.data.messages){
-                        var msgs = res.data.messages;
-                        var lastMsg = msgs[msgs.length - 1];
-                        if(lastMsg && lastMsg.role === 'assistant') addMessage('assistant', lastMsg.content);
-                    } else {
-                        addMessage('assistant', res.msg || '请求失败，请重试');
-                    }
-                    loadSessions();
-                    isLoading = false;
-                    document.getElementById('sendBtn').disabled = false;
-                }).catch(function(){
-                    hideTyping();
-                    addMessage('assistant', '❌ 网络请求失败，请检查连接');
-                    isLoading = false;
-                    document.getElementById('sendBtn').disabled = false;
-                });
-                return;
-            }
             showTyping();
             addStreamingMessage('assistant');
             var fullContent = '';

@@ -8,6 +8,128 @@ from app.models.chat_message import ChatMessageRepository
 from app.models.model_engine import ModelEngineRepository
 
 
+def _resolve_employee_alias(content):
+    employees = DigitalEmployeeRepository.get_all()
+    if not employees:
+        return None, None, None
+    sorted_emps = sorted(employees, key=lambda e: len(e.get("alias", "")), reverse=True)
+    for emp in sorted_emps:
+        alias = emp.get("alias", "")
+        if content.startswith(alias):
+            param = content[len(alias):].lstrip("：: \t")
+            return alias, param, emp
+    return None, None, None
+
+
+def _parse_employee_call(content):
+    import re
+    m = re.match(r'^@(\S+)[：:\s]*(.*)', content, re.S)
+    if m:
+        return "@" + m.group(1), m.group(2).strip()
+    m2 = re.match(r'^@(\S+)$', content.strip())
+    if m2:
+        return "@" + m2.group(1), ""
+    return None, None
+
+
+def _format_api_result(employee, resp_json):
+    try:
+        name = employee.get("name", "")
+        data = resp_json.get("data", {})
+        if name == "音乐" or employee.get("api_service_id", 0) == 1:
+            song = data.get("song", "")
+            singer = data.get("singer", "")
+            cover = data.get("cover", "")
+            music_url = data.get("Music", "")
+            song_id = data.get("id", "")
+            card = f"""🎵 **随机音乐推荐**
+
+<div style="display:flex;align-items:center;gap:16px;margin:12px 0;padding:16px;background:linear-gradient(135deg,#667eea,#764ba2);border-radius:12px;color:#fff;">
+  <img src="{cover}" style="width:80px;height:80px;border-radius:8px;object-fit:cover;" onerror="this.style.display='none'">
+  <div>
+    <div style="font-size:18px;font-weight:bold;">{song}</div>
+    <div style="font-size:14px;opacity:0.9;">🎤 {singer}</div>
+    <div style="margin-top:8px;">
+      <a href="{music_url}" target="_blank" style="display:inline-block;padding:6px 16px;background:#fff;color:#667eea;border-radius:20px;text-decoration:none;font-size:13px;font-weight:bold;">▶ 立即收听</a>
+    </div>
+  </div>
+</div>
+
+> 🆔 歌曲ID: {song_id}"""
+            return card
+
+        if name == "天气" or "temp" in data or "weather" in data:
+            city = data.get("city", data.get("cityEnglish", ""))
+            weather = data.get("weather", "")
+            temp = data.get("temp", "")
+            tempn = data.get("tempn", "")
+            wind = data.get("wind", "")
+            cur = data.get("current", {})
+            humidity = cur.get("humidity", "")
+            air = cur.get("air", "")
+            time = cur.get("time", data.get("time", ""))
+
+            weather_icons = {"晴": "☀️", "多云": "⛅", "阴": "☁️", "雨": "🌧️", "雪": "❄️", "雾": "🌫️", "风": "🌬️"}
+            icon = "🌡️"
+            for kw, emoji in weather_icons.items():
+                if kw in weather:
+                    icon = emoji
+                    break
+
+            card = f"""🌤️ **{city} 天气预报**
+
+<div style="display:flex;align-items:center;gap:20px;margin:12px 0;padding:20px;background:linear-gradient(135deg,#43e97b,#38f9d7);border-radius:12px;color:#333;">
+  <div style="font-size:48px;">{icon}</div>
+  <div>
+    <div style="font-size:32px;font-weight:bold;">{temp}°C</div>
+    <div style="font-size:16px;">{weather}</div>
+  </div>
+  <div style="font-size:13px;line-height:1.8;">
+    最低: {tempn}°C<br>
+    风力: {wind}<br>
+    湿度: {humidity}<br>
+    空气质量: {air}
+  </div>
+</div>
+
+> 📅 {time}"""
+            return card
+    except Exception:
+        pass
+    formatted = json.dumps(resp_json, ensure_ascii=False, indent=2)
+    return f"🌐 **{employee.get('name','')}** 返回数据：\n\n```json\n{formatted}\n```"
+
+
+def _call_api_employee(employee, param):
+    import requests
+    try:
+        api_id = employee.get("api_service_id", 0)
+        if not api_id:
+            return f"❌ 数字员工 {employee['name']} 未关联 API 服务"
+        from app.models.api_service import ApiServiceRepository
+        api = ApiServiceRepository.get_by_id(api_id)
+        if not api:
+            return f"❌ 数字员工 {employee['name']} 关联的 API 服务不存在"
+
+        url = api["url"]
+        if param:
+            if "{city}" in url:
+                url = url.replace("{city}", urllib.parse.quote(param))
+            else:
+                separator = "&" if "?" in url else "?"
+                url = f"{url}{separator}city={urllib.parse.quote(param)}"
+
+        safe_headers = {"accept-encoding": "gzip, deflate", "user-agent": "Mozilla/5.0"}
+        resp = requests.get(url, headers=safe_headers, timeout=10, verify=False)
+        if resp.status_code == 200:
+            data = resp.json()
+            return _format_api_result(employee, data)
+        else:
+            return f"❌ API 请求失败 (HTTP {resp.status_code})"
+    except Exception as e:
+        return f"❌ API 调用出错: {str(e)}"
+
+
 class ChatBaseHandler(BaseHandler):
     def get_login_url(self):
         return "/auth/login"
@@ -118,9 +240,9 @@ class ChatSendHandler(ChatBaseHandler):
 
         ChatMessageRepository.add(session_id, "user", content)
 
-        employee_alias, employee_param, matched_emp = self._resolve_employee_alias(content)
+        employee_alias, employee_param, matched_emp = _resolve_employee_alias(content)
         if not employee_alias:
-            employee_alias, employee_param = self._parse_employee_call(content)
+            employee_alias, employee_param = _parse_employee_call(content)
 
         if employee_alias:
             employee = matched_emp or (DigitalEmployeeRepository.get_by_alias(employee_alias) if employee_alias else None)
@@ -134,7 +256,7 @@ class ChatSendHandler(ChatBaseHandler):
                     ChatSessionRepository.update_title(session_id, employee_param[:20] or employee["name"])
                 return self._session_response(session_id)
             elif employee["category"] == "普通" and employee["agent_type"] == "api":
-                api_result = self._call_api_employee(employee, employee_param)
+                api_result = _call_api_employee(employee, employee_param)
                 ChatMessageRepository.add(session_id, "assistant", api_result, msg_type="employee_call", employee_id=employee["id"])
                 if session.get("title") == "新对话":
                     ChatSessionRepository.update_title(session_id, f"@{employee['name']} " + employee_param[:10])
@@ -168,141 +290,6 @@ class ChatSendHandler(ChatBaseHandler):
         session = ChatSessionRepository.get_by_id(session_id)
         messages = ChatMessageRepository.get_by_session(session_id)
         self.write({"code": 0, "msg": "", "data": {"session": session, "messages": messages}})
-
-    def _parse_employee_call(self, content):
-        import re
-        m = re.match(r'^@(\S+)[：:\s]*(.*)', content, re.S)
-        if m:
-            alias = "@" + m.group(1)
-            param = m.group(2).strip()
-            return alias, param
-        m2 = re.match(r'^@(\S+)$', content.strip())
-        if m2:
-            return "@" + m2.group(1), ""
-        return None, None
-
-    @staticmethod
-    def _parse_employee_call(content):
-        import re
-        m = re.match(r'^@(\S+)[：:\s]*(.*)', content, re.S)
-        if m:
-            alias = "@" + m.group(1)
-            param = m.group(2).strip()
-            return alias, param
-        m2 = re.match(r'^@(\S+)$', content.strip())
-        if m2:
-            return "@" + m2.group(1), ""
-        return None, None
-
-    @staticmethod
-    def _resolve_employee_alias(content):
-        employees = DigitalEmployeeRepository.get_all()
-        if not employees:
-            return None, None, content
-        sorted_emps = sorted(employees, key=lambda e: len(e.get("alias", "")), reverse=True)
-        for emp in sorted_emps:
-            alias = emp.get("alias", "")
-            if content.startswith(alias):
-                param = content[len(alias):].lstrip("：: \t")
-                return alias, param, emp
-        return None, None, content
-
-    @staticmethod
-    def _format_api_result(employee, resp_json):
-        try:
-            name = employee.get("name", "")
-            data = resp_json.get("data", {})
-            if name == "音乐" or employee.get("api_service_id", 0) == 1:
-                song = data.get("song", "")
-                singer = data.get("singer", "")
-                cover = data.get("cover", "")
-                music_url = data.get("Music", "")
-                song_id = data.get("id", "")
-                card = f"""🎵 **随机音乐推荐**
-
-<div style="display:flex;align-items:center;gap:16px;margin:12px 0;padding:16px;background:linear-gradient(135deg,#667eea,#764ba2);border-radius:12px;color:#fff;">
-  <img src="{cover}" style="width:80px;height:80px;border-radius:8px;object-fit:cover;" onerror="this.style.display='none'">
-  <div>
-    <div style="font-size:18px;font-weight:bold;">{song}</div>
-    <div style="font-size:14px;opacity:0.9;">🎤 {singer}</div>
-    <div style="margin-top:8px;">
-      <a href="{music_url}" target="_blank" style="display:inline-block;padding:6px 16px;background:#fff;color:#667eea;border-radius:20px;text-decoration:none;font-size:13px;font-weight:bold;">▶ 立即收听</a>
-    </div>
-  </div>
-</div>
-
-> 🆔 歌曲ID: {song_id}"""
-                return card
-
-            if name == "天气" or "temp" in data or "weather" in data:
-                city = data.get("city", data.get("cityEnglish", ""))
-                weather = data.get("weather", "")
-                temp = data.get("temp", "")
-                tempn = data.get("tempn", "")
-                wind = data.get("wind", "")
-                cur = data.get("current", {})
-                humidity = cur.get("humidity", "")
-                air = cur.get("air", "")
-                time = cur.get("time", data.get("time", ""))
-
-                weather_icons = {"晴": "☀️", "多云": "⛅", "阴": "☁️", "雨": "🌧️", "雪": "❄️", "雾": "🌫️", "风": "🌬️"}
-                icon = "🌡️"
-                for kw, emoji in weather_icons.items():
-                    if kw in weather:
-                        icon = emoji
-                        break
-
-                card = f"""🌤️ **{city} 天气预报**
-
-<div style="display:flex;align-items:center;gap:20px;margin:12px 0;padding:20px;background:linear-gradient(135deg,#43e97b,#38f9d7);border-radius:12px;color:#333;">
-  <div style="font-size:48px;">{icon}</div>
-  <div>
-    <div style="font-size:32px;font-weight:bold;">{temp}°C</div>
-    <div style="font-size:16px;">{weather}</div>
-  </div>
-  <div style="font-size:13px;line-height:1.8;">
-    最低: {tempn}°C<br>
-    风力: {wind}<br>
-    湿度: {humidity}<br>
-    空气质量: {air}
-  </div>
-</div>
-
-> 📅 {time}"""
-                return card
-        except Exception:
-            pass
-        formatted = json.dumps(resp_json, ensure_ascii=False, indent=2)
-        return f"🌐 **{employee.get('name','')}** 返回数据：\n\n```json\n{formatted}\n```"
-
-    def _call_api_employee(self, employee, param):
-        import requests
-        try:
-            api_id = employee.get("api_service_id", 0)
-            if not api_id:
-                return f"❌ 数字员工 {employee['name']} 未关联 API 服务"
-            from app.models.api_service import ApiServiceRepository
-            api = ApiServiceRepository.get_by_id(api_id)
-            if not api:
-                return f"❌ 数字员工 {employee['name']} 关联的 API 服务不存在"
-
-            url = api["url"]
-            if param:
-                if "{city}" in url:
-                    url = url.replace("{city}", urllib.parse.quote(param))
-                else:
-                    separator = "&" if "?" in url else "?"
-                    url = f"{url}{separator}city={urllib.parse.quote(param)}"
-
-            safe_headers = {"accept-encoding": "gzip, deflate", "user-agent": "Mozilla/5.0"}
-            resp = requests.get(url, headers=safe_headers, timeout=10, verify=False)
-            if resp.status_code == 200:
-                data = resp.json()
-                return ChatSendHandler._format_api_result(employee, data)
-            else:
-                return f"❌ API 请求失败 (HTTP {resp.status_code})"
-        except Exception as e:
-            return f"❌ API 调用出错: {str(e)}"
 
     def _call_ai_employee(self, employee, param, session_id, model_id=0):
         specified_model = None
@@ -447,9 +434,9 @@ class ChatStreamHandler(ChatBaseHandler):
             self.finish()
             return
 
-        employee_alias, employee_param, matched_emp = self._resolve_employee_alias(content)
+        employee_alias, employee_param, matched_emp = _resolve_employee_alias(content)
         if not employee_alias:
-            employee_alias, employee_param = self._parse_employee_call(content)
+            employee_alias, employee_param = _parse_employee_call(content)
 
         if employee_alias:
             employee = matched_emp or (DigitalEmployeeRepository.get_by_alias(employee_alias) if employee_alias else None)
@@ -474,7 +461,7 @@ class ChatStreamHandler(ChatBaseHandler):
                     self._do_sse_stream(session_id, active_model, ai_messages)
                     return
                 else:
-                    api_result = self._call_api_employee(employee, employee_param)
+                    api_result = _call_api_employee(employee, employee_param)
                     ChatMessageRepository.add(session_id, "assistant", api_result, msg_type="employee_call", employee_id=employee["id"])
                     self.set_header("Content-Type", "text/event-stream; charset=utf-8")
                     self.write(f"data: {json.dumps({'content': api_result, 'done': True})}\n\n")
@@ -551,43 +538,6 @@ class ChatStreamHandler(ChatBaseHandler):
             ChatMessageRepository.add(session_id, "assistant", error_msg)
             self.write(f"data: {json.dumps({'error': error_msg})}\n\n")
             self.finish()
-
-    def _parse_employee_call(self, content):
-        import re
-        m = re.match(r'^@(\S+)[：:\s]*(.*)', content, re.S)
-        if m:
-            return "@" + m.group(1), m.group(2).strip()
-        m2 = re.match(r'^@(\S+)$', content.strip())
-        if m2:
-            return "@" + m2.group(1), ""
-        return None, None
-
-    def _call_api_employee(self, employee, param):
-        import requests
-        try:
-            api_id = employee.get("api_service_id", 0)
-            if not api_id:
-                return f"❌ 数字员工 {employee['name']} 未关联 API 服务"
-            from app.models.api_service import ApiServiceRepository
-            api = ApiServiceRepository.get_by_id(api_id)
-            if not api:
-                return f"❌ 数字员工 {employee['name']} 关联的 API 服务不存在"
-            url = api["url"]
-            if param:
-                if "{city}" in url:
-                    url = url.replace("{city}", urllib.parse.quote(param))
-                else:
-                    sep = "&" if "?" in url else "?"
-                    url = f"{url}{sep}city={urllib.parse.quote(param)}"
-            safe_headers = {"accept-encoding": "gzip, deflate", "user-agent": "Mozilla/5.0"}
-            resp = requests.get(url, headers=safe_headers, timeout=10, verify=False)
-            if resp.status_code == 200:
-                data = resp.json()
-                return ChatSendHandler._format_api_result(employee, data)
-            else:
-                return f"❌ API 请求失败 (HTTP {resp.status_code})"
-        except Exception as e:
-            return f"❌ API 调用出错: {str(e)}"
 
     def _try_sql_query(self, content):
         sql_keywords = ["数据", "采集", "最新", "多少条", "统计", "数据库", "watch", "列表", "查询"]
