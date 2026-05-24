@@ -101,6 +101,9 @@ def init_db():
                 # 任务六：接口管理模块
                 conn.execute("INSERT INTO modules(name, icon, url, parent_id, sort_order) VALUES(?,?,?,?,?)", ("接口管理", "layui-icon-list", "", 0, 8))
                 conn.execute("INSERT INTO modules(name, icon, url, parent_id, sort_order) VALUES(?,?,?,?,?)", ("接口列表", "layui-icon-template-1", "/admin/api/manage", 20, 1))
+                # 任务七：数字员工管理模块
+                conn.execute("INSERT INTO modules(name, icon, url, parent_id, sort_order) VALUES(?,?,?,?,?)", ("数字员工", "layui-icon-user", "", 0, 3))
+                conn.execute("INSERT INTO modules(name, icon, url, parent_id, sort_order) VALUES(?,?,?,?,?)", ("员工配置", "layui-icon-user", "/admin/employee/manage", 22, 1))
                 conn.commit()
         except Exception:
             pass
@@ -131,6 +134,18 @@ def init_db():
                     conn.execute("INSERT INTO modules(name, icon, url, parent_id, sort_order) VALUES(?,?,?,?,?)", ("接口管理", "layui-icon-list", "", 0, 8))
                     pkid = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
                     conn.execute("INSERT INTO modules(name, icon, url, parent_id, sort_order) VALUES(?,?,?,?,?)", ("接口列表", "layui-icon-template-1", "/admin/api/manage", pkid, 1))
+                    conn.commit()
+        except Exception:
+            pass
+
+        # 确保数字员工模块存在 (已存在数据库的情况)
+        try:
+            with get_connection() as conn:
+                existing = conn.execute("SELECT id FROM modules WHERE name = '数字员工'").fetchone()
+                if not existing:
+                    conn.execute("INSERT INTO modules(name, icon, url, parent_id, sort_order) VALUES(?,?,?,?,?)", ("数字员工", "layui-icon-user", "", 0, 3))
+                    pkid = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+                    conn.execute("INSERT INTO modules(name, icon, url, parent_id, sort_order) VALUES(?,?,?,?,?)", ("员工配置", "layui-icon-user", "/admin/employee/manage", pkid, 1))
                     conn.commit()
         except Exception:
             pass
@@ -245,6 +260,68 @@ def init_db():
             )
             """
         )
+
+        # 任务六-1：插入示例 API 数据
+        try:
+            cursor = conn.execute("SELECT id FROM api_services LIMIT 1")
+            if not cursor.fetchone():
+                conn.execute(
+                    "INSERT INTO api_services (name, url, method, resp_format, qps_limit, token, status, description) VALUES (?,?,?,?,?,?,?,?)",
+                    ("随机音乐", "https://api.52vmy.cn/api/music/wy/rand", "GET", "JSON", 4, "", 1, "网易云随机音乐推荐，携带Token可无视QPS限制")
+                )
+                conn.execute(
+                    "INSERT INTO api_services (name, url, method, resp_format, qps_limit, token, status, description) VALUES (?,?,?,?,?,?,?,?)",
+                    ("三日天气", "https://api.52vmy.cn/api/query/tian", "GET", "JSON", 4, "", 1, "三日天气预报，参数: city=城市名，携带Token可无视QPS限制")
+                )
+                conn.commit()
+        except Exception:
+            pass
+
+        # 任务七：数字员工表
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS digital_employees(
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL,
+                alias TEXT NOT NULL UNIQUE,
+                category TEXT DEFAULT 'AI',
+                agent_type TEXT DEFAULT 'chat',
+                api_service_id INTEGER DEFAULT 0,
+                prompt TEXT DEFAULT '',
+                icon TEXT DEFAULT 'fa-robot',
+                description TEXT DEFAULT '',
+                sort_order INTEGER DEFAULT 0,
+                status INTEGER NOT NULL DEFAULT 1,
+                create_at TEXT NOT NULL DEFAULT(datetime('now'))
+            )
+            """
+        )
+
+        # 任务七：插入初始数字员工数据
+        try:
+            cursor = conn.execute("SELECT id FROM digital_employees LIMIT 1")
+            if not cursor.fetchone():
+                conn.execute(
+                    "INSERT INTO digital_employees(name, alias, category, agent_type, prompt, icon, description, sort_order) VALUES(?,?,?,?,?,?,?,?)",
+                    ("川小农", "@川小农", "AI", "chat",
+                     "你是川小农，四川农业大学的智能助手。你擅长回答关于四川农业大学的问题，包括校园信息、专业介绍、招生政策、校园文化等。请用热情亲切的语气回答用户的问题。",
+                     "fa-leaf", "四川农业大学智能助手，回答校园相关问题", 1)
+                )
+                weather_id = conn.execute("SELECT id FROM api_services WHERE name = '三日天气'").fetchone()
+                music_id = conn.execute("SELECT id FROM api_services WHERE name = '随机音乐'").fetchone()
+                w_id = weather_id["id"] if weather_id else 0
+                m_id = music_id["id"] if music_id else 0
+                conn.execute(
+                    "INSERT INTO digital_employees(name, alias, category, agent_type, api_service_id, icon, description, sort_order) VALUES(?,?,?,?,?,?,?,?)",
+                    ("天气", "@天气", "普通", "api", w_id, "fa-cloud-sun", "查询三日天气预报，输入城市名即可", 2)
+                )
+                conn.execute(
+                    "INSERT INTO digital_employees(name, alias, category, agent_type, api_service_id, icon, description, sort_order) VALUES(?,?,?,?,?,?,?,?)",
+                    ("音乐", "@音乐", "普通", "api", m_id, "fa-music", "随机推荐网易云音乐歌曲", 3)
+                )
+                conn.commit()
+        except Exception:
+            pass
 
         try:
             cursor = conn.execute("SELECT id FROM watch_sources WHERE name = '百度新闻' LIMIT 1")
