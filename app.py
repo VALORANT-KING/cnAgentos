@@ -66,6 +66,11 @@ from app.controllers.admin import AdminApiListHandler
 from app.controllers.admin import AdminApiAddHandler
 from app.controllers.admin import AdminApiUpdateHandler
 from app.controllers.admin import AdminApiDeleteHandler
+from app.controllers.admin import AdminEmployeeManageHandler
+from app.controllers.admin import AdminEmployeeListHandler
+from app.controllers.admin import AdminEmployeeAddHandler
+from app.controllers.admin import AdminEmployeeUpdateHandler
+from app.controllers.admin import AdminEmployeeDeleteHandler
 from app.models.db import init_db
 
 
@@ -180,7 +185,12 @@ def make_app():
             (r"/admin/api/list", AdminApiListHandler),
             (r"/admin/api/add", AdminApiAddHandler),
             (r"/admin/api/update", AdminApiUpdateHandler),
-            (r"/admin/api/delete", AdminApiDeleteHandler)
+            (r"/admin/api/delete", AdminApiDeleteHandler),
+            (r"/admin/employee/manage", AdminEmployeeManageHandler),
+            (r"/admin/employee/list", AdminEmployeeListHandler),
+            (r"/admin/employee/add", AdminEmployeeAddHandler),
+            (r"/admin/employee/update", AdminEmployeeUpdateHandler),
+            (r"/admin/employee/delete", AdminEmployeeDeleteHandler)
         ], **settings)
 
 if __name__ == "__main__":

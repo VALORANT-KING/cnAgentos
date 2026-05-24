@@ -7,6 +7,7 @@ from app.models.role import RoleRepository
 from app.models.model_engine import ModelEngineRepository
 from app.models.watch import WatchRepository
 from app.models.api_service import ApiServiceRepository
+from app.models.digital_employee import DigitalEmployeeRepository
 import requests
 import urllib3
 from bs4 import BeautifulSoup
@@ -805,5 +806,82 @@ class AdminApiDeleteHandler(AdminBaseHandler):
         if not api_id:
             return self.write({"code": 1, "msg": "参数错误"})
         ApiServiceRepository.delete(api_id)
+        self.write({"code": 0, "msg": "删除成功"})
+
+
+class AdminEmployeeManageHandler(AdminBaseHandler):
+    @tornado.web.authenticated
+    def get(self):
+        self.render("admin_employee_manage.html")
+
+
+class AdminEmployeeListHandler(AdminBaseHandler):
+    @tornado.web.authenticated
+    def get(self):
+        page = int(self.get_argument("page", 1))
+        limit = int(self.get_argument("limit", 20))
+        keyword = self.get_argument("keyword", "").strip()
+
+        data, total = DigitalEmployeeRepository.get_list(page, limit, keyword)
+        self.write({"code": 0, "msg": "", "count": total, "data": data})
+
+
+class AdminEmployeeAddHandler(AdminBaseHandler):
+    @tornado.web.authenticated
+    def post(self):
+        name = self.get_body_argument("name", "").strip()
+        alias = self.get_body_argument("alias", "").strip()
+        category = self.get_body_argument("category", "AI").strip()
+        agent_type = self.get_body_argument("agent_type", "chat").strip()
+        api_service_id = int(self.get_body_argument("api_service_id", 0))
+        prompt = self.get_body_argument("prompt", "").strip()
+        icon = self.get_body_argument("icon", "fa-robot").strip()
+        description = self.get_body_argument("description", "").strip()
+        sort_order = int(self.get_body_argument("sort_order", 0))
+
+        if not name or not alias:
+            return self.write({"code": 1, "msg": "名称和别名不能为空"})
+
+        existing = DigitalEmployeeRepository.get_by_alias(alias)
+        if existing:
+            return self.write({"code": 1, "msg": "别名已存在，请使用其他别名"})
+
+        DigitalEmployeeRepository.add(name, alias, category, agent_type, api_service_id, prompt, icon, description, sort_order)
+        self.write({"code": 0, "msg": "添加成功"})
+
+
+class AdminEmployeeUpdateHandler(AdminBaseHandler):
+    @tornado.web.authenticated
+    def post(self):
+        emp_id = int(self.get_body_argument("id", 0))
+        name = self.get_body_argument("name", "").strip()
+        alias = self.get_body_argument("alias", "").strip()
+        category = self.get_body_argument("category", "AI").strip()
+        agent_type = self.get_body_argument("agent_type", "chat").strip()
+        api_service_id = int(self.get_body_argument("api_service_id", 0))
+        prompt = self.get_body_argument("prompt", "").strip()
+        icon = self.get_body_argument("icon", "fa-robot").strip()
+        description = self.get_body_argument("description", "").strip()
+        sort_order = int(self.get_body_argument("sort_order", 0))
+        status = int(self.get_body_argument("status", 1))
+
+        if not emp_id or not name or not alias:
+            return self.write({"code": 1, "msg": "参数错误"})
+
+        existing = DigitalEmployeeRepository.get_by_alias(alias)
+        if existing and existing["id"] != emp_id:
+            return self.write({"code": 1, "msg": "别名已被其他员工使用"})
+
+        DigitalEmployeeRepository.update(emp_id, name, alias, category, agent_type, api_service_id, prompt, icon, description, sort_order, status)
+        self.write({"code": 0, "msg": "更新成功"})
+
+
+class AdminEmployeeDeleteHandler(AdminBaseHandler):
+    @tornado.web.authenticated
+    def post(self):
+        emp_id = int(self.get_body_argument("id", 0))
+        if not emp_id:
+            return self.write({"code": 1, "msg": "参数错误"})
+        DigitalEmployeeRepository.delete(emp_id)
         self.write({"code": 0, "msg": "删除成功"})
 
