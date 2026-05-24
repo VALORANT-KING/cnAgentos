@@ -367,59 +367,68 @@
                     hideTyping();
                     if(res.code === 0 && res.data && res.data.messages){
                         var msgs = res.data.messages;
-                        var last = msgs[msgs.length - 1];
-                        if(last && last.role === 'assistant') addMessage('assistant', last.content);
+                        var lastMsg = msgs[msgs.length - 1];
+                        if(lastMsg && lastMsg.role === 'assistant') addMessage('assistant', lastMsg.content);
                     } else {
-                        addMessage('assistant', res.msg || '请求失败');
+                        addMessage('assistant', res.msg || '请求失败，请重试');
                     }
                     loadSessions();
                     isLoading = false;
                     document.getElementById('sendBtn').disabled = false;
                 }).catch(function(){
                     hideTyping();
-                    addMessage('assistant', '网络请求失败');
+                    addMessage('assistant', '❌ 网络请求失败，请检查连接');
                     isLoading = false;
                     document.getElementById('sendBtn').disabled = false;
                 });
-            } else {
-                showTyping();
-                addStreamingMessage('assistant');
-                var fullContent = '';
-                var url = '/api/chat/stream?session_id=' + sid + '&content=' + encodeURIComponent(content) + '&model_id=' + currentModelId;
-                var evtSource = new EventSource(url);
-                evtSource.onmessage = function(event){
-                    try {
-                        var data = JSON.parse(event.data);
-                        if(data.error){
-                            hideTyping();
-                            removeStreamingMessage();
-                            addMessage('assistant', data.error);
-                            evtSource.close();
-                            isLoading = false;
-                            document.getElementById('sendBtn').disabled = false;
-                            return;
-                        }
-                        if(data.done){
-                            hideTyping();
-                            evtSource.close();
-                            loadSessions();
-                            isLoading = false;
-                            document.getElementById('sendBtn').disabled = false;
-                            return;
-                        }
-                        fullContent += data.content || '';
-                        updateStreamingContent(fullContent);
-                    } catch(e){}
-                };
-                evtSource.onerror = function(){
-                    hideTyping();
-                    if(!fullContent) removeStreamingMessage();
-                    evtSource.close();
-                    loadSessions();
-                    isLoading = false;
-                    document.getElementById('sendBtn').disabled = false;
-                };
+                return;
             }
+            showTyping();
+            addStreamingMessage('assistant');
+            var fullContent = '';
+            var url = '/api/chat/stream?session_id=' + sid + '&content=' + encodeURIComponent(content) + '&model_id=' + currentModelId;
+            var evtSource = new EventSource(url);
+            evtSource.onmessage = function(event){
+                try {
+                    var data = JSON.parse(event.data);
+                    if(data.error){
+                        hideTyping();
+                        removeStreamingMessage();
+                        addMessage('assistant', data.error);
+                        evtSource.close();
+                        isLoading = false;
+                        document.getElementById('sendBtn').disabled = false;
+                        return;
+                    }
+                    if(data.done){
+                        hideTyping();
+                        evtSource.close();
+                        if(fullContent && !document.querySelector('#msg-assistant-streaming .message-bubble').textContent.trim()){
+                            removeStreamingMessage();
+                            addMessage('assistant', fullContent);
+                        }
+                        loadSessions();
+                        isLoading = false;
+                        document.getElementById('sendBtn').disabled = false;
+                        return;
+                    }
+                    fullContent += data.content || '';
+                    updateStreamingContent(fullContent);
+                } catch(e){}
+            };
+            evtSource.onerror = function(){
+                hideTyping();
+                if(fullContent){
+                    removeStreamingMessage();
+                    addMessage('assistant', fullContent);
+                } else {
+                    removeStreamingMessage();
+                }
+                evtSource.close();
+                loadSessions();
+                isLoading = false;
+                document.getElementById('sendBtn').disabled = false;
+            };
         }
 
         document.addEventListener('DOMContentLoaded', function(){

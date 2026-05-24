@@ -332,18 +332,35 @@ class ChatStreamHandler(ChatBaseHandler):
         employee_alias, employee_param = self._parse_employee_call(content)
         if employee_alias:
             employee = DigitalEmployeeRepository.get_by_alias(employee_alias)
-            if employee and employee["category"] == "普通" and employee["agent_type"] == "api":
-                api_result = self._call_api_employee(employee, employee_param)
-                ChatMessageRepository.add(session_id, "assistant", api_result, msg_type="employee_call", employee_id=employee["id"])
+            if employee and employee.get("status") != 1:
                 self.set_header("Content-Type", "text/event-stream; charset=utf-8")
-                self.write(f"data: {json.dumps({'content': api_result, 'done': True})}\n\n")
+                self.write(f"data: {json.dumps({'content': f'数字员工 {employee_alias} 已禁用', 'done': True})}\n\n")
                 self.finish()
                 return
+            if employee:
+                if employee["category"] == "AI" and employee["agent_type"] == "chat":
+                    default_model = ModelEngineRepository.get_default()
+                    if not default_model:
+                        self.set_header("Content-Type", "text/event-stream; charset=utf-8")
+                        self.write(f"data: {json.dumps({'content': '系统没有配置默认模型', 'done': True})}\n\n")
+                        self.finish()
+                        return
+                    prompt = employee.get("prompt", "")
+                    ai_messages = [{"role": "system", "content": prompt}, {"role": "user", "content": employee_param or "你好"}]
+                    self._do_sse_stream(session_id, default_model, ai_messages)
+                    return
+                else:
+                    api_result = self._call_api_employee(employee, employee_param)
+                    ChatMessageRepository.add(session_id, "assistant", api_result, msg_type="employee_call", employee_id=employee["id"])
+                    self.set_header("Content-Type", "text/event-stream; charset=utf-8")
+                    self.write(f"data: {json.dumps({'content': api_result, 'done': True})}\n\n")
+                    self.finish()
+                    return
 
         default_model = ModelEngineRepository.get_default()
         if not default_model:
             self.set_header("Content-Type", "text/event-stream; charset=utf-8")
-            self.write("data: {\"error\": \"未配置默认模型\"}\n\n")
+            self.write(f"data: {json.dumps({'content': '系统没有配置默认模型，请联系管理员在后台模型引擎中配置', 'done': True})}\n\n")
             self.finish()
             return
 
@@ -355,10 +372,6 @@ class ChatStreamHandler(ChatBaseHandler):
             self.finish()
             return
 
-        self.set_header("Content-Type", "text/event-stream; charset=utf-8")
-        self.set_header("Cache-Control", "no-cache")
-        self.set_header("Connection", "keep-alive")
-
         messages = [{"role": "user", "content": content}]
         history = ChatMessageRepository.get_by_session(session_id)
         for msg in history[-10:]:
@@ -367,17 +380,23 @@ class ChatStreamHandler(ChatBaseHandler):
             elif msg["role"] == "assistant":
                 messages.insert(0, {"role": "assistant", "content": msg["content"]})
 
+        self._do_sse_stream(session_id, default_model, messages)
+
+    def _do_sse_stream(self, session_id, model, messages):
+        self.set_header("Content-Type", "text/event-stream; charset=utf-8")
+        self.set_header("Cache-Control", "no-cache")
+        self.set_header("Connection", "keep-alive")
         try:
             from openai import OpenAI
             client = OpenAI(
-                api_key=default_model.get("api_key") or "sk-no-key-required",
-                base_url=default_model.get("base_url") or "https://api.openai.com/v1"
+                api_key=model.get("api_key") or "sk-no-key-required",
+                base_url=model.get("base_url") or "https://api.openai.com/v1"
             )
             stream = client.chat.completions.create(
-                model=default_model.get("model_name") or "gpt-3.5-turbo",
+                model=model.get("model_name") or "gpt-3.5-turbo",
                 messages=messages,
-                max_tokens=default_model.get("max_tokens", 2048),
-                temperature=default_model.get("temperature", 0.7),
+                max_tokens=model.get("max_tokens", 2048),
+                temperature=model.get("temperature", 0.7),
                 stream=True
             )
             full_reply = ""
@@ -393,7 +412,7 @@ class ChatStreamHandler(ChatBaseHandler):
         except Exception as e:
             error_msg = f"❌ AI 对话出错: {str(e)}"
             ChatMessageRepository.add(session_id, "assistant", error_msg)
-            self.write(f"data: {json.dumps({'content': error_msg, 'done': True})}\n\n")
+            self.write(f"data: {json.dumps({'error': error_msg})}\n\n")
             self.finish()
 
     def _parse_employee_call(self, content):
