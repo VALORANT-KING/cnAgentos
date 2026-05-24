@@ -397,6 +397,107 @@ def init_db():
         except Exception:
             pass
 
+        # 团队任务2：即时通信表
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS im_friends(
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL,
+                friend_id INTEGER NOT NULL,
+                remark TEXT DEFAULT '',
+                status INTEGER DEFAULT 1,
+                create_at TEXT NOT NULL DEFAULT(datetime('now'))
+            )
+            """
+        )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS im_friend_requests(
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                from_user_id INTEGER NOT NULL,
+                to_user_id INTEGER NOT NULL,
+                message TEXT DEFAULT '',
+                status INTEGER DEFAULT 0,
+                create_at TEXT NOT NULL DEFAULT(datetime('now'))
+            )
+            """
+        )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS im_groups(
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL,
+                owner_id INTEGER NOT NULL,
+                announcement TEXT DEFAULT '',
+                status INTEGER DEFAULT 1,
+                create_at TEXT NOT NULL DEFAULT(datetime('now'))
+            )
+            """
+        )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS im_group_members(
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                group_id INTEGER NOT NULL,
+                user_id INTEGER NOT NULL,
+                role TEXT DEFAULT 'member',
+                create_at TEXT NOT NULL DEFAULT(datetime('now'))
+            )
+            """
+        )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS im_messages(
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                msg_type TEXT DEFAULT 'text',
+                content TEXT,
+                file_path TEXT DEFAULT '',
+                file_id INTEGER DEFAULT 0,
+                sender_id INTEGER NOT NULL,
+                receiver_type TEXT NOT NULL,
+                receiver_id INTEGER NOT NULL,
+                employee_id INTEGER DEFAULT 0,
+                create_at TEXT NOT NULL DEFAULT(datetime('now'))
+            )
+            """
+        )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS im_files(
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                file_name TEXT NOT NULL,
+                file_path TEXT NOT NULL,
+                file_size INTEGER DEFAULT 0,
+                file_hash TEXT DEFAULT '',
+                uploader_id INTEGER NOT NULL,
+                create_at TEXT NOT NULL DEFAULT(datetime('now'))
+            )
+            """
+        )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS im_servers(
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL,
+                host TEXT NOT NULL,
+                port INTEGER DEFAULT 10086,
+                status INTEGER DEFAULT 1,
+                current_load INTEGER DEFAULT 0,
+                create_at TEXT NOT NULL DEFAULT(datetime('now'))
+            )
+            """
+        )
+        try:
+            cursor = conn.execute("SELECT id FROM im_servers LIMIT 1")
+            if not cursor.fetchone():
+                conn.execute(
+                    "INSERT INTO im_servers(name, host, port, status) VALUES(?,?,?,?)",
+                    ("本机服务", "127.0.0.1", 10086, 1)
+                )
+                conn.commit()
+        except Exception:
+            pass
+
         try:
             cursor = conn.execute("SELECT id FROM roles LIMIT 1")
             if not cursor.fetchone():

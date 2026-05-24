@@ -7,7 +7,7 @@ class LoginHandler(BaseHandler):
     def get(self):
         user = self.get_current_user()
         if user:
-            self.redirect("/chat")
+            self.redirect("/home")
         else:
             self.render("login.html", title="登录", error=None)
 
@@ -22,7 +22,7 @@ class LoginHandler(BaseHandler):
             return self.render("login.html", title="登录", error="用户名或密码错误")
 
         self.set_secure_cookie("username", username)
-        self.redirect("/chat")
+        self.redirect("/home")
 
 
 class LogoutHandler(BaseHandler):
@@ -35,7 +35,7 @@ class RegisterHandler(BaseHandler):
     def get(self):
         user = self.get_current_user()
         if user:
-            self.redirect("/chat")
+            self.redirect("/home")
         else:
             self.render("register.html", title="注册", error=None)
 
@@ -65,4 +65,4 @@ class RegisterHandler(BaseHandler):
             return self.render("register.html", title="注册", error="注册失败，请稍后重试")
 
         self.set_secure_cookie("username", username)
-        self.redirect("/chat")
+        self.redirect("/home")

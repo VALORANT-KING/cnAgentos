@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>用户中心 - AI智能瞭望与智能问数系统</title>
+    <link rel="stylesheet" href="{{ static_url('dist/bootstrap-5.3.8-dist/css/bootstrap.min.css') }}">
+    <link rel="stylesheet" href="{{ static_url('dist/fontawesome-free-5.15.4-web/css/all.min.css') }}">
+    <link rel="stylesheet" href="{{ static_url('css/base.css') }}">
+    <style>
+        body { min-height: 100vh; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); display: flex; align-items: center; justify-content: center; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+        .portal-card { background: #fff; border-radius: 20px; padding: 48px 40px; max-width: 720px; width: 90%; box-shadow: 0 20px 60px rgba(0,0,0,0.2); }
+        .portal-title { text-align: center; margin-bottom: 8px; font-weight: 700; color: #333; }
+        .portal-sub { text-align: center; color: #999; font-size: 14px; margin-bottom: 36px; }
+        .module-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+        @media (max-width: 576px) { .module-grid { grid-template-columns: 1fr; } }
+        .module-item { border: 2px solid #f0f0f0; border-radius: 16px; padding: 32px 24px; text-align: center; cursor: pointer; transition: all 0.3s; text-decoration: none; color: inherit; display: block; }
+        .module-item:hover { border-color: #1e9fff; transform: translateY(-4px); box-shadow: 0 12px 24px rgba(30,159,255,0.2); color: inherit; }
+        .module-item i { font-size: 48px; margin-bottom: 16px; }
+        .module-item.chat i { color: #07c160; }
+        .module-item.ask i { color: #1e9fff; }
+        .module-item h4 { font-size: 18px; font-weight: 600; margin-bottom: 8px; }
+        .module-item p { font-size: 13px; color: #999; margin: 0; }
+        .user-bar { text-align: center; margin-top: 28px; font-size: 13px; color: #999; }
+        .user-bar a { color: #ff5722; text-decoration: none; margin-left: 12px; }
+    </style>
+</head>
+<body>
+    <div class="portal-card">
+        <h2 class="portal-title"><i class="fas fa-brain" style="color:#667eea;"></i> 欢迎使用智能平台</h2>
+        <p class="portal-sub">你好，<strong>{{ username }}</strong> — 请选择要进入的子系统</p>
+        <div class="module-grid">
+            <a href="/chat" class="module-item ask">
+                <i class="fas fa-robot"></i>
+                <h4>智能问数</h4>
+                <p>AI 对话、@数字员工、数据库智能查询</p>
+            </a>
+            <a href="/im" class="module-item chat">
+                <i class="fas fa-comments"></i>
+                <h4>智能聊天</h4>
+                <p>好友私聊、群聊、文件与表情，局域网即时通信</p>
+            </a>
+        </div>
+        <div class="user-bar">
+            <span><i class="fas fa-user-circle"></i> {{ username }}</span>
+            <a href="#" onclick="document.getElementById('logoutForm').submit();return false;"><i class="fas fa-sign-out-alt"></i> 退出登录</a>
+        </div>
+        <form id="logoutForm" action="/auth/logout" method="post" style="display:none;">
+            {% module xsrf_form_html() %}
+        </form>
+    </div>
+</body>
+</html>

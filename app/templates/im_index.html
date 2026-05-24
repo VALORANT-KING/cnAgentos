@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>智能聊天 - 即时通信</title>
+    <link rel="stylesheet" href="{{ static_url('dist/bootstrap-5.3.8-dist/css/bootstrap.min.css') }}">
+    <link rel="stylesheet" href="{{ static_url('dist/fontawesome-free-5.15.4-web/css/all.min.css') }}">
+    <link rel="stylesheet" href="{{ static_url('css/im.css') }}">
+</head>
+<body>
+    <div class="im-app">
+        <aside class="im-sidebar">
+            <div class="im-sidebar-header">
+                <h3><i class="fas fa-comments" style="color:#07c160;"></i> 智能聊天</h3>
+                <a href="/home" title="返回首页" style="color:#666;"><i class="fas fa-th"></i></a>
+            </div>
+            <div class="im-nav-tabs">
+                <button type="button" class="active" data-tab="chats">会话</button>
+                <button type="button" data-tab="friends">好友</button>
+                <button type="button" data-tab="groups">群聊</button>
+            </div>
+            <div class="im-search" id="sideSearch" style="display:none;">
+                <input type="text" id="userSearchInput" placeholder="搜索用户名添加好友…">
+                <button type="button" class="btn btn-sm btn-primary w-100 mt-2" id="searchUserBtn">查找用户</button>
+                <div id="searchResults" class="mt-2"></div>
+            </div>
+            <div class="im-list" id="chatList"></div>
+            <div class="im-list" id="sideList" style="display:none;flex:1;"></div>
+            <div class="server-bar">
+                <span><span id="serverStatusDot" class="server-status offline"></span>服务器</span>
+                <select id="serverSelect" title="切换聊天服务器"></select>
+            </div>
+        </aside>
+        <main class="im-main" id="chatPanel" style="display:none;flex-direction:column;">
+            <div class="im-main-header">
+                <h4 id="chatTitle">聊天</h4>
+                <div class="im-header-actions">
+                    <button type="button" id="showRequestsBtn" title="好友申请">
+                        <i class="fas fa-user-plus"></i> 申请<span id="requestBadge" class="badge-dot" style="display:none;">0</span>
+                    </button>
+                    <button type="button" id="createGroupBtn" title="创建群"><i class="fas fa-users"></i> 建群</button>
+                    <a href="/chat"><i class="fas fa-robot"></i> 问数</a>
+                    <a href="/home"><i class="fas fa-home"></i></a>
+                </div>
+            </div>
+            <div class="im-messages" id="messagesBox"></div>
+            <div class="im-input-bar">
+                <div class="im-toolbar">
+                    <button type="button" id="emojiBtn" title="Emoji"><i class="far fa-smile"></i></button>
+                    <button type="button" id="stickerBtn" title="动态表情"><i class="fas fa-grin-stars"></i></button>
+                    <button type="button" onclick="document.getElementById('fileInput').click()" title="发送文件"><i class="fas fa-paperclip"></i></button>
+                    <input type="file" id="fileInput" style="display:none;">
+                </div>
+                <div class="im-input-row">
+                    <div class="im-input-wrap">
+                        <div class="emoji-panel" id="emojiPanel"></div>
+                        <div class="sticker-panel" id="stickerPanel"></div>
+                        <textarea id="msgInput" rows="2" placeholder="输入消息，群聊中 @川小农 可唤起数字员工…"></textarea>
+                    </div>
+                    <button type="button" class="im-send-btn" id="sendBtn">发送</button>
+                </div>
+            </div>
+        </main>
+        <div class="im-empty" id="emptyChat">
+            <i class="fas fa-comment-dots"></i>
+            <p>选择左侧会话开始聊天</p>
+            <p style="font-size:12px;">同一局域网内注册用户可互相添加好友</p>
+            <a href="/home" class="btn btn-outline-secondary btn-sm mt-3">返回首页</a>
+        </div>
+    </div>
+
+    <div class="modal-overlay" id="requestsModal">
+        <div class="modal-box">
+            <h5>好友申请</h5>
+            <div id="requestsBox" class="modal-list"></div>
+            <button type="button" class="btn btn-secondary btn-sm mt-3" onclick="this.closest('.modal-overlay').classList.remove('show')">关闭</button>
+        </div>
+    </div>
+
+    <div class="modal-overlay" id="createGroupModal">
+        <div class="modal-box">
+            <h5>创建群聊</h5>
+            <input type="text" class="form-control mb-3" id="groupNameInput" placeholder="群名称">
+            <p class="small text-muted">选择好友加入：</p>
+            <div id="groupMemberCheckboxes" class="modal-list"></div>
+            <button type="button" class="btn btn-success btn-sm" id="confirmCreateGroup">创建</button>
+            <button type="button" class="btn btn-secondary btn-sm" onclick="document.getElementById('createGroupModal').classList.remove('show')">取消</button>
+        </div>
+    </div>
+
+    <script>
+        var IM_USERNAME = "{{ username }}";
+        var IM_USER_ID = {{ user_id }};
+    </script>
+    <script src="{{ static_url('js/im.js') }}"></script>
+</body>
+</html>

@@ -80,6 +80,7 @@ venv.bak/
 *.sqlite
 
 # Project specific
+/uploads/
 /lib/
 /vendor/
 baidnews.html

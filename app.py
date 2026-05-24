@@ -81,6 +81,28 @@ from app.controllers.chat import ChatModelListHandler
 from app.controllers.chat import ChatSendHandler
 from app.controllers.chat import ChatStreamHandler
 from app.controllers.auth import RegisterHandler
+from app.controllers.home import HomePortalHandler
+from app.controllers.im import ImIndexHandler
+from app.controllers.im import ImWebSocketHandler
+from app.controllers.im import ImFriendSearchHandler
+from app.controllers.im import ImFriendAddHandler
+from app.controllers.im import ImFriendListHandler
+from app.controllers.im import ImFriendRequestsHandler
+from app.controllers.im import ImFriendAcceptHandler
+from app.controllers.im import ImFriendRejectHandler
+from app.controllers.im import ImGroupCreateHandler
+from app.controllers.im import ImGroupListHandler
+from app.controllers.im import ImGroupJoinHandler
+from app.controllers.im import ImGroupMembersHandler
+from app.controllers.im import ImGroupInviteHandler
+from app.controllers.im import ImMessageHistoryHandler
+from app.controllers.im import ImConversationsHandler
+from app.controllers.im import ImFileUploadHandler
+from app.controllers.im import ImFileDownloadHandler
+from app.controllers.im import ImServerListHandler
+from app.controllers.im import ImServerHealthHandler
+from app.controllers.im import ImEmployeeListHandler
+from app.controllers.im import ImEmployeeCallHandler
 from app.models.db import init_db
 
 
@@ -147,6 +169,7 @@ def make_app():
     # 添加所有缺失的路由
     return tornado.web.Application([
             (r"/", IndexHandler),
+            (r"/home", HomePortalHandler),
             (r"/auth/login", LoginHandler),
             (r"/auth/logout", LogoutHandler),
             (r"/admin/login", AdminLoginHandler),
@@ -210,16 +233,38 @@ def make_app():
             (r"/api/chat/stream", ChatStreamHandler),
             (r"/api/employee/list", ChatEmployeeListHandler),
             (r"/api/model/list", ChatModelListHandler),
-            (r"/auth/register", RegisterHandler)
+            (r"/auth/register", RegisterHandler),
+            (r"/im", ImIndexHandler),
+            (r"/ws/im", ImWebSocketHandler),
+            (r"/api/im/friends/search", ImFriendSearchHandler),
+            (r"/api/im/friends/add", ImFriendAddHandler),
+            (r"/api/im/friends/list", ImFriendListHandler),
+            (r"/api/im/friends/requests", ImFriendRequestsHandler),
+            (r"/api/im/friends/accept", ImFriendAcceptHandler),
+            (r"/api/im/friends/reject", ImFriendRejectHandler),
+            (r"/api/im/groups/create", ImGroupCreateHandler),
+            (r"/api/im/groups/list", ImGroupListHandler),
+            (r"/api/im/groups/join", ImGroupJoinHandler),
+            (r"/api/im/groups/members", ImGroupMembersHandler),
+            (r"/api/im/groups/invite", ImGroupInviteHandler),
+            (r"/api/im/messages/history", ImMessageHistoryHandler),
+            (r"/api/im/conversations", ImConversationsHandler),
+            (r"/api/im/files/upload", ImFileUploadHandler),
+            (r"/api/im/files/download", ImFileDownloadHandler),
+            (r"/api/im/servers/list", ImServerListHandler),
+            (r"/api/im/health", ImServerHealthHandler),
+            (r"/api/im/employee/call", ImEmployeeCallHandler),
         ], **settings)
 
 if __name__ == "__main__":
     init_db()
     app = make_app()
     # Windows 下建议直接使用 app.listen
-    app.listen(10086)
+    app.listen(10086, address="0.0.0.0")
 
-    print("====== Server 启动成功 ======= 端口：10086 =====",flush=True)
+    print("====== Server 启动成功 ======= 端口：10086 (局域网可访问) =====", flush=True)
     print("用户登录地址：http://127.0.0.1:10086/auth/login", flush=True)
+    print("用户首页：http://127.0.0.1:10086/home", flush=True)
+    print("智能聊天：http://127.0.0.1:10086/im", flush=True)
     print("管理后台地址：http://127.0.0.1:10086/admin/login", flush=True)
     tornado.ioloop.IOLoop.current().start()
