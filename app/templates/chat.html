@@ -200,7 +200,7 @@
             var container = document.getElementById('messagesContainer');
             document.getElementById('emptyState').style.display = 'none';
             var existing = document.getElementById('msg-' + role + '-streaming');
-            if (existing) return;
+            if (existing) existing.remove();
             var html = '<div class="message ' + role + '" id="msg-' + role + '-streaming">';
             html += '<div class="message-avatar"><i class="fas fa-' + (role === 'user' ? 'user' : 'robot') + '"></i></div>';
             html += '<div class="message-bubble markdown-body"></div></div>';
@@ -339,6 +339,7 @@
             document.getElementById('sendBtn').disabled = true;
 
             addMessage('user', content);
+            showTyping();
 
             if(!currentSessionId || currentSessionId === '0'){
                 fetch('/api/chat/session/add', {
@@ -364,6 +365,7 @@
             showTyping();
             addStreamingMessage('assistant');
             var fullContent = '';
+            var streamDone = false;
             var url = '/api/chat/stream?session_id=' + sid + '&content=' + encodeURIComponent(content) + '&model_id=' + currentModelId;
             var evtSource = new EventSource(url);
             evtSource.onmessage = function(event){
@@ -374,6 +376,7 @@
                         removeStreamingMessage();
                         addMessage('assistant', data.error);
                         evtSource.close();
+                        streamDone = true;
                         isLoading = false;
                         document.getElementById('sendBtn').disabled = false;
                         return;
@@ -381,10 +384,9 @@
                     if(data.done){
                         hideTyping();
                         evtSource.close();
-                        if(fullContent && !document.querySelector('#msg-assistant-streaming .message-bubble').textContent.trim()){
-                            removeStreamingMessage();
-                            addMessage('assistant', fullContent);
-                        }
+                        removeStreamingMessage();
+                        addMessage('assistant', fullContent);
+                        streamDone = true;
                         loadSessions();
                         isLoading = false;
                         document.getElementById('sendBtn').disabled = false;
@@ -395,12 +397,14 @@
                 } catch(e){}
             };
             evtSource.onerror = function(){
+                if(streamDone) return;
                 hideTyping();
                 if(fullContent){
                     removeStreamingMessage();
                     addMessage('assistant', fullContent);
                 } else {
                     removeStreamingMessage();
+                    addMessage('assistant', '⚠️ 连接中断，请重试');
                 }
                 evtSource.close();
                 loadSessions();
