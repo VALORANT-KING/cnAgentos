@@ -101,9 +101,8 @@ def init_db():
                 # 任务六：接口管理模块
                 conn.execute("INSERT INTO modules(name, icon, url, parent_id, sort_order) VALUES(?,?,?,?,?)", ("接口管理", "layui-icon-list", "", 0, 8))
                 conn.execute("INSERT INTO modules(name, icon, url, parent_id, sort_order) VALUES(?,?,?,?,?)", ("接口列表", "layui-icon-template-1", "/admin/api/manage", 20, 1))
-                # 任务七：数字员工管理模块
-                conn.execute("INSERT INTO modules(name, icon, url, parent_id, sort_order) VALUES(?,?,?,?,?)", ("数字员工", "layui-icon-user", "", 0, 3))
-                conn.execute("INSERT INTO modules(name, icon, url, parent_id, sort_order) VALUES(?,?,?,?,?)", ("员工配置", "layui-icon-user", "/admin/employee/manage", 22, 1))
+                # 任务七：员工配置子菜单 (父级数字员工 id=9 已在上面第9行插入)
+                conn.execute("INSERT INTO modules(name, icon, url, parent_id, sort_order) VALUES(?,?,?,?,?)", ("员工配置", "layui-icon-user", "/admin/employee/manage", 9, 1))
                 conn.commit()
         except Exception:
             pass
@@ -141,12 +140,25 @@ def init_db():
         # 确保数字员工模块存在 (已存在数据库的情况)
         try:
             with get_connection() as conn:
-                existing = conn.execute("SELECT id FROM modules WHERE name = '数字员工'").fetchone()
+                existing = conn.execute("SELECT id FROM modules WHERE name = '员工配置'").fetchone()
                 if not existing:
-                    conn.execute("INSERT INTO modules(name, icon, url, parent_id, sort_order) VALUES(?,?,?,?,?)", ("数字员工", "layui-icon-user", "", 0, 3))
-                    pkid = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
-                    conn.execute("INSERT INTO modules(name, icon, url, parent_id, sort_order) VALUES(?,?,?,?,?)", ("员工配置", "layui-icon-user", "/admin/employee/manage", pkid, 1))
+                    # 检查父级"数字员工"是否存在，不存在则创建
+                    parent = conn.execute("SELECT id FROM modules WHERE name = '数字员工'").fetchone()
+                    if not parent:
+                        conn.execute("INSERT INTO modules(name, icon, url, parent_id, sort_order) VALUES(?,?,?,?,?)", ("数字员工", "layui-icon-user", "", 0, 3))
+                        parent_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+                    else:
+                        parent_id = parent["id"]
+                    conn.execute("INSERT INTO modules(name, icon, url, parent_id, sort_order) VALUES(?,?,?,?,?)", ("员工配置", "layui-icon-user", "/admin/employee/manage", parent_id, 1))
                     conn.commit()
+        except Exception:
+            pass
+
+        # 确保数字员工模块的 URL 正确 (针对已存在但 URL 为空的情况)
+        try:
+            with get_connection() as conn:
+                conn.execute("UPDATE modules SET url = '/admin/employee/manage' WHERE name = '员工配置' AND (url = '' OR url IS NULL)")
+                conn.commit()
         except Exception:
             pass
 
