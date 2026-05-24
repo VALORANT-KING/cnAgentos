@@ -381,6 +381,7 @@
                         document.getElementById('sendBtn').disabled = false;
                         return;
                     }
+                    fullContent += data.content || '';
                     if(data.done){
                         hideTyping();
                         evtSource.close();
@@ -392,7 +393,6 @@
                         document.getElementById('sendBtn').disabled = false;
                         return;
                     }
-                    fullContent += data.content || '';
                     updateStreamingContent(fullContent);
                 } catch(e){}
             };
