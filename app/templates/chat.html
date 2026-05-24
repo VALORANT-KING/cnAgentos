@@ -145,7 +145,8 @@
         }
 
         function renderMarkdown(text) {
-            var html = escapeHtml(text);
+            var html = text;
+            html = html.replace(/</g, '&lt;').replace(/>/g, '&gt;');
             html = html.replace(/### (.+)/g, '<h3>$1</h3>');
             html = html.replace(/## (.+)/g, '<h2>$1</h2>');
             html = html.replace(/# (.+)/g, '<h1>$1</h1>');
@@ -156,6 +157,13 @@
             html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank">$1</a>');
             html = html.replace(/\n/g, '<br>');
             return html;
+        }
+
+        function renderRichContent(text) {
+            if (text.indexOf('<div') >= 0 || text.indexOf('<img') >= 0) {
+                return text;
+            }
+            return renderMarkdown(text);
         }
 
         function scrollToBottom() {
@@ -177,13 +185,13 @@
             document.getElementById('emptyState').style.display = 'none';
             var msgDiv = document.getElementById('msg-' + role + '-streaming');
             if (append && msgDiv) {
-                msgDiv.querySelector('.message-bubble').innerHTML = renderMarkdown(content);
+                msgDiv.querySelector('.message-bubble').innerHTML = renderRichContent(content);
                 scrollToBottom();
                 return;
             }
             var html = '<div class="message ' + role + '" id="msg-' + role + '-' + Date.now() + '">';
             html += '<div class="message-avatar"><i class="fas fa-' + (role === 'user' ? 'user' : 'robot') + '"></i></div>';
-            html += '<div class="message-bubble markdown-body">' + renderMarkdown(content) + '</div></div>';
+            html += '<div class="message-bubble markdown-body">' + renderRichContent(content) + '</div></div>';
             container.insertAdjacentHTML('beforeend', html);
             scrollToBottom();
         }
@@ -203,7 +211,7 @@
         function updateStreamingContent(content) {
             var msgDiv = document.getElementById('msg-assistant-streaming');
             if (msgDiv) {
-                msgDiv.querySelector('.message-bubble').innerHTML = renderMarkdown(content);
+                msgDiv.querySelector('.message-bubble').innerHTML = renderRichContent(content);
                 scrollToBottom();
             }
         }
