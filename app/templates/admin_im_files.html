@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>文件管理</title>
+    <link rel="stylesheet" href="/static/dist/layui-v2.13.6/layui/css/layui.css">
+</head>
+<body class="layui-layout-body" style="padding: 15px;">
+    <div class="layui-card">
+        <div class="layui-card-header">智能聊天 - 文件管理（MD5 去重存储）</div>
+        <div class="layui-card-body">
+            <div class="layui-form layui-form-pane" style="margin-bottom:10px;">
+                <div class="layui-inline">
+                    <input type="text" id="keyword" placeholder="文件名 / MD5" class="layui-input">
+                </div>
+                <div class="layui-inline">
+                    <button class="layui-btn" id="btnSearch">搜索</button>
+                </div>
+            </div>
+            <table id="fileTable" lay-filter="fileTable"></table>
+        </div>
+    </div>
+
+    <script src="/static/dist/layui-v2.13.6/layui/layui.js"></script>
+    <script>
+        layui.use(['table', 'layer', 'jquery'], function(){
+            var table = layui.table, layer = layui.layer, $ = layui.jquery;
+
+            function getCookie(name) {
+                var r = document.cookie.match("\\b" + name + "=([^;]*)\\b");
+                return r ? r[1] : undefined;
+            }
+            $.ajaxSetup({
+                beforeSend: function(xhr, settings) {
+                    if (settings.type === 'POST') {
+                        xhr.setRequestHeader("X-XSRFToken", getCookie("_xsrf"));
+                    }
+                }
+            });
+
+            table.render({
+                elem: '#fileTable',
+                url: '/admin/im/files/list',
+                cols: [[
+                    {field: 'id', title: 'ID', width: 70},
+                    {field: 'file_name', title: '文件名', width: 200},
+                    {field: 'file_hash', title: 'MD5', width: 260},
+                    {field: 'file_size', title: '大小(B)', width: 100},
+                    {field: 'uploader_name', title: '上传者', width: 120},
+                    {field: 'create_at', title: '上传时间', width: 170},
+                    {title: '操作', width: 180, templet: function(d){
+                        return '<a class="layui-btn layui-btn-xs" lay-event="preview">预览</a>' +
+                               '<a class="layui-btn layui-btn-danger layui-btn-xs" lay-event="del">删除</a>';
+                    }}
+                ]]
+            });
+
+            $('#btnSearch').click(function(){
+                table.reload('fileTable', {where: {keyword: $('#keyword').val()}});
+            });
+
+            table.on('tool(fileTable)', function(obj){
+                if (obj.event === 'preview') {
+                    window.open('/admin/im/files/preview?id=' + obj.data.id, '_blank');
+                } else if (obj.event === 'del') {
+                    layer.confirm('确定删除该文件？', function(idx){
+                        $.post('/admin/im/files/delete', {id: obj.data.id}, function(res){
+                            layer.msg(res.msg);
+                            if (res.code === 0) table.reload('fileTable');
+                            layer.close(idx);
+                        });
+                    });
+                }
+            });
+        });
+    </script>
+</body>
+</html>

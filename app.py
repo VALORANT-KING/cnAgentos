@@ -71,6 +71,28 @@ from app.controllers.admin import AdminEmployeeListHandler
 from app.controllers.admin import AdminEmployeeAddHandler
 from app.controllers.admin import AdminEmployeeUpdateHandler
 from app.controllers.admin import AdminEmployeeDeleteHandler
+from app.controllers.admin import AdminImGroupsHandler
+from app.controllers.admin import AdminImGroupsListHandler
+from app.controllers.admin import AdminImGroupsDissolveHandler
+from app.controllers.admin import AdminImGroupsBanHandler
+from app.controllers.admin import AdminImGroupsMembersHandler
+from app.controllers.admin import AdminImGroupsAnnouncementHandler
+from app.controllers.admin import AdminImFilesHandler
+from app.controllers.admin import AdminImFilesListHandler
+from app.controllers.admin import AdminImFilesDeleteHandler
+from app.controllers.admin import AdminImFilesPreviewHandler
+from app.controllers.admin import AdminImServersHandler
+from app.controllers.admin import AdminImServersListHandler
+from app.controllers.admin import AdminImServersAddHandler
+from app.controllers.admin import AdminImServersUpdateHandler
+from app.controllers.admin import AdminImServersDeleteHandler
+from app.controllers.admin import AdminEmployeeToolsHandler
+from app.controllers.admin import AdminEmployeeToolsListHandler
+from app.controllers.admin import AdminEmployeeToolsAddHandler
+from app.controllers.admin import AdminEmployeeToolsUpdateHandler
+from app.controllers.admin import AdminEmployeeToolsDeleteHandler
+from app.controllers.admin import AdminEmployeeToolsBindHandler
+from app.controllers.admin import AdminEmployeeToolsBindingsHandler
 from app.controllers.chat import ChatIndexHandler
 from app.controllers.chat import ChatSessionListHandler
 from app.controllers.chat import ChatSessionAddHandler
@@ -90,6 +112,7 @@ from app.controllers.im import ImFriendListHandler
 from app.controllers.im import ImFriendRequestsHandler
 from app.controllers.im import ImFriendAcceptHandler
 from app.controllers.im import ImFriendRejectHandler
+from app.controllers.im import ImFriendDeleteHandler
 from app.controllers.im import ImGroupCreateHandler
 from app.controllers.im import ImGroupListHandler
 from app.controllers.im import ImGroupJoinHandler
@@ -224,6 +247,28 @@ def make_app():
             (r"/admin/employee/add", AdminEmployeeAddHandler),
             (r"/admin/employee/update", AdminEmployeeUpdateHandler),
             (r"/admin/employee/delete", AdminEmployeeDeleteHandler),
+            (r"/admin/im/groups", AdminImGroupsHandler),
+            (r"/admin/im/groups/list", AdminImGroupsListHandler),
+            (r"/admin/im/groups/dissolve", AdminImGroupsDissolveHandler),
+            (r"/admin/im/groups/ban", AdminImGroupsBanHandler),
+            (r"/admin/im/groups/members", AdminImGroupsMembersHandler),
+            (r"/admin/im/groups/announcement", AdminImGroupsAnnouncementHandler),
+            (r"/admin/im/files", AdminImFilesHandler),
+            (r"/admin/im/files/list", AdminImFilesListHandler),
+            (r"/admin/im/files/delete", AdminImFilesDeleteHandler),
+            (r"/admin/im/files/preview", AdminImFilesPreviewHandler),
+            (r"/admin/im/servers", AdminImServersHandler),
+            (r"/admin/im/servers/list", AdminImServersListHandler),
+            (r"/admin/im/servers/add", AdminImServersAddHandler),
+            (r"/admin/im/servers/update", AdminImServersUpdateHandler),
+            (r"/admin/im/servers/delete", AdminImServersDeleteHandler),
+            (r"/admin/employee/tools", AdminEmployeeToolsHandler),
+            (r"/admin/employee/tools/list", AdminEmployeeToolsListHandler),
+            (r"/admin/employee/tools/add", AdminEmployeeToolsAddHandler),
+            (r"/admin/employee/tools/update", AdminEmployeeToolsUpdateHandler),
+            (r"/admin/employee/tools/delete", AdminEmployeeToolsDeleteHandler),
+            (r"/admin/employee/tools/bind", AdminEmployeeToolsBindHandler),
+            (r"/admin/employee/tools/bindings", AdminEmployeeToolsBindingsHandler),
             (r"/chat", ChatIndexHandler),
             (r"/api/chat/sessions", ChatSessionListHandler),
             (r"/api/chat/session/add", ChatSessionAddHandler),
@@ -242,6 +287,7 @@ def make_app():
             (r"/api/im/friends/requests", ImFriendRequestsHandler),
             (r"/api/im/friends/accept", ImFriendAcceptHandler),
             (r"/api/im/friends/reject", ImFriendRejectHandler),
+            (r"/api/im/friends/delete", ImFriendDeleteHandler),
             (r"/api/im/groups/create", ImGroupCreateHandler),
             (r"/api/im/groups/list", ImGroupListHandler),
             (r"/api/im/groups/join", ImGroupJoinHandler),

@@ -53,8 +53,9 @@
                         return d.status === 1 ? '<span class="layui-badge layui-bg-green">启用</span>' : '<span class="layui-badge layui-bg-gray">禁用</span>';
                     }},
                     {field: 'create_at', title: '创建时间', width: 170},
-                    {title: '操作', width: 150, templet: function(d){
+                    {title: '操作', width: 220, templet: function(d){
                         return '<a class="layui-btn layui-btn-xs" lay-event="edit">编辑</a>' +
+                               '<a class="layui-btn layui-btn-xs layui-btn-normal" lay-event="tools">绑定工具</a>' +
                                '<a class="layui-btn layui-btn-danger layui-btn-xs" lay-event="del">删除</a>';
                     }}
                 ]]
@@ -67,6 +68,8 @@
             table.on('tool(employeeTable)', function(obj){
                 if(obj.event === 'edit'){
                     openEmployeeForm('编辑员工', obj.data);
+                } else if(obj.event === 'tools'){
+                    openToolBindDialog(obj.data);
                 } else if(obj.event === 'del'){
                     layer.confirm('确定删除该数字员工吗？', function(index){
                         $.post('/admin/employee/delete', {id: obj.data.id}, function(res){
@@ -213,6 +216,41 @@
                                     }
                                 });
                                 return false;
+                            });
+                        }
+                    });
+                });
+            }
+
+            function openToolBindDialog(employee){
+                $.when(
+                    $.get('/admin/employee/tools/list?limit=100'),
+                    $.get('/admin/employee/tools/bindings?employee_id=' + employee.id)
+                ).done(function(toolsRes, bindRes){
+                    var tools = (toolsRes[0].code === 0) ? toolsRes[0].data : [];
+                    var bound = (bindRes[0].code === 0) ? bindRes[0].data : [];
+                    var html = '<div style="padding:15px;">';
+                    tools.forEach(function(t){
+                        var checked = bound.indexOf(t.id) >= 0 ? ' checked' : '';
+                        html += '<p><input type="checkbox" class="tool-cb" value="' + t.id + '"' + checked + '> ' +
+                            t.name + ' <span class="layui-badge layui-bg-gray">' + t.tool_type + '</span></p>';
+                    });
+                    html += '</div>';
+                    layer.open({
+                        type: 1,
+                        title: '为「' + employee.name + '」绑定工具',
+                        area: ['420px', '400px'],
+                        content: html,
+                        btn: ['保存', '取消'],
+                        yes: function(idx, layero){
+                            var ids = [];
+                            layero.find('.tool-cb:checked').each(function(){ ids.push(parseInt(this.value, 10)); });
+                            $.post('/admin/employee/tools/bind', {
+                                employee_id: employee.id,
+                                tool_ids: JSON.stringify(ids)
+                            }, function(res){
+                                layer.msg(res.msg);
+                                if (res.code === 0) layer.close(idx);
                             });
                         }
                     });

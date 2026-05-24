@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>工具管理</title>
+    <link rel="stylesheet" href="/static/dist/layui-v2.13.6/layui/css/layui.css">
+    <link rel="stylesheet" href="/static/dist/fontawesome-free-5.15.4-web/css/all.min.css">
+</head>
+<body class="layui-layout-body" style="padding: 15px;">
+    <div class="layui-card">
+        <div class="layui-card-header">数字员工工具集管理</div>
+        <div class="layui-card-body">
+            <button class="layui-btn" id="btnAdd">新增工具</button>
+            <p class="layui-word-aux" style="margin:8px 0;">管理 AI 可调用的工具（天气 API、知识库等），并在「员工配置」页面为员工绑定专属工具。</p>
+            <table id="toolTable" lay-filter="toolTable"></table>
+        </div>
+    </div>
+
+    <script src="/static/dist/layui-v2.13.6/layui/layui.js"></script>
+    <script>
+        layui.use(['table', 'form', 'layer', 'jquery'], function(){
+            var table = layui.table, form = layui.form, layer = layui.layer, $ = layui.jquery;
+            var apiList = [];
+
+            function getCookie(name) {
+                var r = document.cookie.match("\\b" + name + "=([^;]*)\\b");
+                return r ? r[1] : undefined;
+            }
+            $.ajaxSetup({
+                beforeSend: function(xhr, settings) {
+                    if (settings.type === 'POST') {
+                        xhr.setRequestHeader("X-XSRFToken", getCookie("_xsrf"));
+                    }
+                }
+            });
+
+            $.get('/admin/api/list?limit=100', function(res){
+                if (res.code === 0) apiList = res.data || [];
+            });
+
+            table.render({
+                elem: '#toolTable',
+                url: '/admin/employee/tools/list',
+                cols: [[
+                    {field: 'id', title: 'ID', width: 70},
+                    {field: 'name', title: '工具名称', width: 140},
+                    {field: 'tool_type', title: '类型', width: 100, templet: function(d){
+                        var map = {api: 'API', knowledge: '知识库', custom: '自定义'};
+                        return map[d.tool_type] || d.tool_type;
+                    }},
+                    {field: 'api_service_name', title: '关联API', width: 140},
+                    {field: 'description', title: '说明'},
+                    {field: 'status', title: '状态', width: 90, templet: function(d){
+                        return d.status === 1
+                            ? '<span class="layui-badge layui-bg-green">启用</span>'
+                            : '<span class="layui-badge layui-bg-gray">禁用</span>';
+                    }},
+                    {field: 'create_at', title: '创建时间', width: 170},
+                    {title: '操作', width: 150, templet: function(){
+                        return '<a class="layui-btn layui-btn-xs" lay-event="edit">编辑</a>' +
+                               '<a class="layui-btn layui-btn-danger layui-btn-xs" lay-event="del">删除</a>';
+                    }}
+                ]]
+            });
+
+            function apiOptions(selected) {
+                var html = '<option value="0">无</option>';
+                apiList.forEach(function(a){
+                    html += '<option value="' + a.id + '"' + (selected == a.id ? ' selected' : '') + '>' + a.name + '</option>';
+                });
+                return html;
+            }
+
+            function openForm(title, data) {
+                layer.open({
+                    type: 1, title: title, area: ['600px', '520px'],
+                    content: '<form class="layui-form" style="padding:20px;">' +
+                        '<input type="hidden" name="id" value="' + (data.id || '') + '">' +
+                        '<div class="layui-form-item"><label class="layui-form-label">名称</label><div class="layui-input-block">' +
+                        '<input name="name" class="layui-input" value="' + (data.name || '') + '"></div></div>' +
+                        '<div class="layui-form-item"><label class="layui-form-label">类型</label><div class="layui-input-block">' +
+                        '<select name="tool_type" id="toolType">' +
+                        '<option value="api">API</option><option value="knowledge">知识库</option><option value="custom">自定义</option>' +
+                        '</select></div></div>' +
+                        '<div class="layui-form-item"><label class="layui-form-label">关联API</label><div class="layui-input-block">' +
+                        '<select name="api_service_id" id="apiSelect">' + apiOptions(data.api_service_id) + '</select></div></div>' +
+                        '<div class="layui-form-item"><label class="layui-form-label">配置JSON</label><div class="layui-input-block">' +
+                        '<textarea name="config" class="layui-textarea">' + (data.config || '') + '</textarea></div></div>' +
+                        '<div class="layui-form-item"><label class="layui-form-label">说明</label><div class="layui-input-block">' +
+                        '<textarea name="description" class="layui-textarea">' + (data.description || '') + '</textarea></div></div>' +
+                        (data.id ? '<div class="layui-form-item"><label class="layui-form-label">状态</label><div class="layui-input-block">' +
+                        '<select name="status"><option value="1">启用</option><option value="0">禁用</option></select></div></div>' : '') +
+                        '<div class="layui-form-item"><div class="layui-input-block">' +
+                        '<button type="button" class="layui-btn" id="formSubmit">保存</button></div></div></form>',
+                    success: function(layero, index) {
+                        if (data.tool_type) layero.find('#toolType').val(data.tool_type);
+                        if (data.status !== undefined) layero.find('[name=status]').val(data.status);
+                        form.render('select');
+                        layero.find('#formSubmit').click(function(){
+                            var fd = {};
+                            layero.find('input,select,textarea').each(function(){
+                                if (this.name) fd[this.name] = $(this).val();
+                            });
+                            var url = data.id ? '/admin/employee/tools/update' : '/admin/employee/tools/add';
+                            $.post(url, fd, function(res){
+                                layer.msg(res.msg);
+                                if (res.code === 0) { table.reload('toolTable'); layer.close(index); }
+                            });
+                        });
+                    }
+                });
+            }
+
+            $('#btnAdd').click(function(){ openForm('新增工具', {}); });
+            table.on('tool(toolTable)', function(obj){
+                if (obj.event === 'edit') openForm('编辑工具', obj.data);
+                else if (obj.event === 'del') {
+                    layer.confirm('确定删除？', function(idx){
+                        $.post('/admin/employee/tools/delete', {id: obj.data.id}, function(res){
+                            layer.msg(res.msg);
+                            if (res.code === 0) table.reload('toolTable');
+                            layer.close(idx);
+                        });
+                    });
+                }
+            });
+        });
+    </script>
+</body>
+</html>

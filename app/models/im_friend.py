@@ -26,10 +26,10 @@ class ImFriendRepository:
     @staticmethod
     def send_request(from_user_id, to_user_id, message=""):
         if from_user_id == to_user_id:
-            return False, "不能添加自己为好友"
+            return False, "不能添加自己为好友", 0
         with get_connection() as conn:
             if ImFriendRepository.is_friend(from_user_id, to_user_id):
-                return False, "已经是好友"
+                return False, "已经是好友", 0
             pending = conn.execute(
                 """
                 SELECT id FROM im_friend_requests
@@ -38,7 +38,7 @@ class ImFriendRepository:
                 (from_user_id, to_user_id),
             ).fetchone()
             if pending:
-                return False, "好友申请已发送，请等待对方处理"
+                return False, "好友申请已发送，请等待对方处理", 0
             reverse = conn.execute(
                 """
                 SELECT id FROM im_friend_requests
@@ -47,7 +47,7 @@ class ImFriendRepository:
                 (to_user_id, from_user_id),
             ).fetchone()
             if reverse:
-                return False, "对方已向你发送申请，请在申请列表中处理"
+                return False, "对方已向你发送申请，请在申请列表中处理", 0
             conn.execute(
                 """
                 INSERT INTO im_friend_requests(from_user_id, to_user_id, message, status)
@@ -55,8 +55,9 @@ class ImFriendRepository:
                 """,
                 (from_user_id, to_user_id, message or ""),
             )
+            request_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
             conn.commit()
-        return True, "好友申请已发送"
+        return True, "好友申请已发送", request_id
 
     @staticmethod
     def get_pending_requests(user_id):
@@ -164,3 +165,28 @@ class ImFriendRepository:
                 (user_id,),
             ).fetchall()
             return [dict(r) for r in rows]
+
+    @staticmethod
+    def remove_friend(user_id, friend_id):
+        if user_id == friend_id:
+            return False, "不能删除自己"
+        with get_connection() as conn:
+            row = conn.execute(
+                """
+                SELECT id FROM im_friends
+                WHERE user_id = ? AND friend_id = ? AND status = 1
+                """,
+                (user_id, friend_id),
+            ).fetchone()
+            if not row:
+                return False, "对方不是您的好友"
+            conn.execute(
+                "UPDATE im_friends SET status = 0 WHERE user_id = ? AND friend_id = ?",
+                (user_id, friend_id),
+            )
+            conn.execute(
+                "UPDATE im_friends SET status = 0 WHERE user_id = ? AND friend_id = ?",
+                (friend_id, user_id),
+            )
+            conn.commit()
+        return True, "已删除好友"

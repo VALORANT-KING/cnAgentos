@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>服务器管理</title>
+    <link rel="stylesheet" href="/static/dist/layui-v2.13.6/layui/css/layui.css">
+</head>
+<body class="layui-layout-body" style="padding: 15px;">
+    <div class="layui-card">
+        <div class="layui-card-header">智能聊天 - 服务器管理（权重/优先级）</div>
+        <div class="layui-card-body">
+            <button class="layui-btn" id="btnAdd">新增服务器</button>
+            <table id="serverTable" lay-filter="serverTable"></table>
+        </div>
+    </div>
+
+    <script src="/static/dist/layui-v2.13.6/layui/layui.js"></script>
+    <script>
+        layui.use(['table', 'form', 'layer', 'jquery'], function(){
+            var table = layui.table, form = layui.form, layer = layui.layer, $ = layui.jquery;
+
+            function getCookie(name) {
+                var r = document.cookie.match("\\b" + name + "=([^;]*)\\b");
+                return r ? r[1] : undefined;
+            }
+            $.ajaxSetup({
+                beforeSend: function(xhr, settings) {
+                    if (settings.type === 'POST') {
+                        xhr.setRequestHeader("X-XSRFToken", getCookie("_xsrf"));
+                    }
+                }
+            });
+
+            table.render({
+                elem: '#serverTable',
+                url: '/admin/im/servers/list',
+                cols: [[
+                    {field: 'id', title: 'ID', width: 70},
+                    {field: 'name', title: '名称', width: 140},
+                    {field: 'host', title: '主机', width: 160},
+                    {field: 'port', title: '端口', width: 80},
+                    {field: 'priority', title: '优先级', width: 90},
+                    {field: 'current_load', title: '负载', width: 80},
+                    {field: 'status', title: '状态', width: 90, templet: function(d){
+                        return d.status === 1
+                            ? '<span class="layui-badge layui-bg-green">启用</span>'
+                            : '<span class="layui-badge layui-bg-gray">禁用</span>';
+                    }},
+                    {field: 'create_at', title: '创建时间', width: 170},
+                    {title: '操作', width: 150, templet: function(){
+                        return '<a class="layui-btn layui-btn-xs" lay-event="edit">编辑</a>' +
+                               '<a class="layui-btn layui-btn-danger layui-btn-xs" lay-event="del">删除</a>';
+                    }}
+                ]]
+            });
+
+            function openForm(title, data) {
+                layer.open({
+                    type: 1, title: title, area: ['520px', '480px'],
+                    content: '<form class="layui-form" style="padding:20px;">' +
+                        '<input type="hidden" name="id" value="' + (data.id || '') + '">' +
+                        '<div class="layui-form-item"><label class="layui-form-label">名称</label><div class="layui-input-block">' +
+                        '<input name="name" class="layui-input" value="' + (data.name || '') + '" required></div></div>' +
+                        '<div class="layui-form-item"><label class="layui-form-label">主机</label><div class="layui-input-block">' +
+                        '<input name="host" class="layui-input" value="' + (data.host || '') + '" required></div></div>' +
+                        '<div class="layui-form-item"><label class="layui-form-label">端口</label><div class="layui-input-block">' +
+                        '<input name="port" type="number" class="layui-input" value="' + (data.port || 10086) + '"></div></div>' +
+                        '<div class="layui-form-item"><label class="layui-form-label">优先级</label><div class="layui-input-block">' +
+                        '<input name="priority" type="number" class="layui-input" value="' + (data.priority || 0) + '">' +
+                        '<div class="layui-form-mid layui-word-aux">数值越大越优先</div></div></div>' +
+                        '<div class="layui-form-item"><label class="layui-form-label">负载</label><div class="layui-input-block">' +
+                        '<input name="current_load" type="number" class="layui-input" value="' + (data.current_load || 0) + '"></div></div>' +
+                        '<div class="layui-form-item"><label class="layui-form-label">状态</label><div class="layui-input-block">' +
+                        '<select name="status"><option value="1"' + (data.status !== 0 ? ' selected' : '') + '>启用</option>' +
+                        '<option value="0"' + (data.status === 0 ? ' selected' : '') + '>禁用</option></select></div></div>' +
+                        '<div class="layui-form-item"><div class="layui-input-block">' +
+                        '<button type="button" class="layui-btn" id="formSubmit">保存</button></div></div></form>',
+                    success: function(layero, index) {
+                        form.render('select');
+                        layero.find('#formSubmit').click(function(){
+                            var fd = {};
+                            layero.find('input,select').each(function(){
+                                fd[this.name] = $(this).val();
+                            });
+                            var url = data.id ? '/admin/im/servers/update' : '/admin/im/servers/add';
+                            $.post(url, fd, function(res){
+                                layer.msg(res.msg);
+                                if (res.code === 0) { table.reload('serverTable'); layer.close(index); }
+                            });
+                        });
+                    }
+                });
+            }
+
+            $('#btnAdd').click(function(){ openForm('新增服务器', {}); });
+            table.on('tool(serverTable)', function(obj){
+                if (obj.event === 'edit') openForm('编辑服务器', obj.data);
+                else if (obj.event === 'del') {
+                    layer.confirm('确定删除？', function(idx){
+                        $.post('/admin/im/servers/delete', {id: obj.data.id}, function(res){
+                            layer.msg(res.msg);
+                            if (res.code === 0) table.reload('serverTable');
+                            layer.close(idx);
+                        });
+                    });
+                }
+            });
+        });
+    </script>
+</body>
+</html>

@@ -885,3 +885,288 @@ class AdminEmployeeDeleteHandler(AdminBaseHandler):
         DigitalEmployeeRepository.delete(emp_id)
         self.write({"code": 0, "msg": "删除成功"})
 
+
+# ── 团队任务2：智能聊天后台管理 ──
+
+class AdminImGroupsHandler(AdminBaseHandler):
+    @tornado.web.authenticated
+    def get(self):
+        self.render("admin_im_groups.html")
+
+
+class AdminImGroupsListHandler(AdminBaseHandler):
+    @tornado.web.authenticated
+    def get(self):
+        from app.models.im_group import ImGroupRepository
+        page = int(self.get_argument("page", 1))
+        limit = int(self.get_argument("limit", 20))
+        keyword = self.get_argument("keyword", "").strip()
+        data, total = ImGroupRepository.get_all(page, limit, keyword or None)
+        self.write({"code": 0, "msg": "", "count": total, "data": data})
+
+
+class AdminImGroupsDissolveHandler(AdminBaseHandler):
+    @tornado.web.authenticated
+    def post(self):
+        from app.models.im_group import ImGroupRepository
+        group_id = int(self.get_body_argument("group_id", 0))
+        if not group_id:
+            return self.write({"code": 1, "msg": "参数错误"})
+        ImGroupRepository.dissolve(group_id)
+        self.write({"code": 0, "msg": "群已解散"})
+
+
+class AdminImGroupsBanHandler(AdminBaseHandler):
+    @tornado.web.authenticated
+    def post(self):
+        from app.models.im_group import ImGroupRepository
+        group_id = int(self.get_body_argument("group_id", 0))
+        status = int(self.get_body_argument("status", 0))
+        if not group_id:
+            return self.write({"code": 1, "msg": "参数错误"})
+        ImGroupRepository.set_status(group_id, status)
+        msg = "群已封禁" if status == 0 else "群已解封"
+        self.write({"code": 0, "msg": msg})
+
+
+class AdminImGroupsMembersHandler(AdminBaseHandler):
+    @tornado.web.authenticated
+    def get(self):
+        from app.models.im_group import ImGroupRepository
+        group_id = int(self.get_argument("group_id", 0))
+        if not group_id:
+            return self.write({"code": 1, "msg": "参数错误"})
+        members = ImGroupRepository.get_members(group_id)
+        employees = ImGroupRepository.get_employees(group_id)
+        group = ImGroupRepository.get_by_id_admin(group_id)
+        self.write({"code": 0, "msg": "", "data": {"group": group, "members": members, "employees": employees}})
+
+
+class AdminImGroupsAnnouncementHandler(AdminBaseHandler):
+    @tornado.web.authenticated
+    def post(self):
+        from app.models.im_group import ImGroupRepository
+        from app.models.im_message import ImMessageRepository
+        from app.controllers.im import broadcast_group
+        group_id = int(self.get_body_argument("group_id", 0))
+        announcement = self.get_body_argument("announcement", "").strip()
+        if not group_id:
+            return self.write({"code": 1, "msg": "参数错误"})
+        ImGroupRepository.set_announcement(group_id, announcement)
+        if announcement:
+            sys_msg = ImMessageRepository.add(
+                0, "group", group_id,
+                f"【系统公告】{announcement}",
+                msg_type="text",
+            )
+            sys_msg["sender_name"] = "系统公告"
+            broadcast_group(group_id, {"type": "message", "data": sys_msg})
+        self.write({"code": 0, "msg": "公告已发布"})
+
+
+class AdminImFilesHandler(AdminBaseHandler):
+    @tornado.web.authenticated
+    def get(self):
+        self.render("admin_im_files.html")
+
+
+class AdminImFilesListHandler(AdminBaseHandler):
+    @tornado.web.authenticated
+    def get(self):
+        from app.models.im_file import ImFileRepository
+        page = int(self.get_argument("page", 1))
+        limit = int(self.get_argument("limit", 20))
+        keyword = self.get_argument("keyword", "").strip()
+        data, total = ImFileRepository.get_list(page, limit, keyword or None)
+        self.write({"code": 0, "msg": "", "count": total, "data": data})
+
+
+class AdminImFilesDeleteHandler(AdminBaseHandler):
+    @tornado.web.authenticated
+    def post(self):
+        from app.models.im_file import ImFileRepository
+        file_id = int(self.get_body_argument("id", 0))
+        if not file_id:
+            return self.write({"code": 1, "msg": "参数错误"})
+        if ImFileRepository.delete(file_id):
+            self.write({"code": 0, "msg": "删除成功"})
+        else:
+            self.write({"code": 1, "msg": "文件不存在"})
+
+
+class AdminImFilesPreviewHandler(AdminBaseHandler):
+    @tornado.web.authenticated
+    def get(self):
+        import os
+        from app.models.im_file import ImFileRepository
+        file_id = int(self.get_argument("id", 0))
+        record = ImFileRepository.get_by_id(file_id)
+        if not record:
+            self.set_status(404)
+            return self.write("文件不存在")
+        path = ImFileRepository.get_full_path(record)
+        if not os.path.exists(path):
+            self.set_status(404)
+            return self.write("文件不存在")
+        ext = os.path.splitext(record["file_name"])[1].lower()
+        if ext in (".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp"):
+            mime = "image/" + ext.lstrip(".")
+            if ext == ".jpg":
+                mime = "image/jpeg"
+            self.set_header("Content-Type", mime)
+        elif ext == ".pdf":
+            self.set_header("Content-Type", "application/pdf")
+        else:
+            self.set_header("Content-Type", "text/plain; charset=utf-8")
+        with open(path, "rb") as f:
+            self.write(f.read())
+
+
+class AdminImServersHandler(AdminBaseHandler):
+    @tornado.web.authenticated
+    def get(self):
+        self.render("admin_im_servers.html")
+
+
+class AdminImServersListHandler(AdminBaseHandler):
+    @tornado.web.authenticated
+    def get(self):
+        from app.models.im_file import ImServerRepository
+        page = int(self.get_argument("page", 1))
+        limit = int(self.get_argument("limit", 20))
+        data, total = ImServerRepository.get_list(page, limit)
+        self.write({"code": 0, "msg": "", "count": total, "data": data})
+
+
+class AdminImServersAddHandler(AdminBaseHandler):
+    @tornado.web.authenticated
+    def post(self):
+        from app.models.im_file import ImServerRepository
+        name = self.get_body_argument("name", "").strip()
+        host = self.get_body_argument("host", "").strip()
+        port = int(self.get_body_argument("port", 10086))
+        status = int(self.get_body_argument("status", 1))
+        priority = int(self.get_body_argument("priority", 0))
+        current_load = int(self.get_body_argument("current_load", 0))
+        if not name or not host:
+            return self.write({"code": 1, "msg": "名称和主机不能为空"})
+        ImServerRepository.add(name, host, port, status, priority, current_load)
+        self.write({"code": 0, "msg": "添加成功"})
+
+
+class AdminImServersUpdateHandler(AdminBaseHandler):
+    @tornado.web.authenticated
+    def post(self):
+        from app.models.im_file import ImServerRepository
+        server_id = int(self.get_body_argument("id", 0))
+        name = self.get_body_argument("name", "").strip()
+        host = self.get_body_argument("host", "").strip()
+        port = int(self.get_body_argument("port", 10086))
+        status = int(self.get_body_argument("status", 1))
+        priority = int(self.get_body_argument("priority", 0))
+        current_load = int(self.get_body_argument("current_load", 0))
+        if not server_id or not name or not host:
+            return self.write({"code": 1, "msg": "参数错误"})
+        ImServerRepository.update(server_id, name, host, port, status, priority, current_load)
+        self.write({"code": 0, "msg": "更新成功"})
+
+
+class AdminImServersDeleteHandler(AdminBaseHandler):
+    @tornado.web.authenticated
+    def post(self):
+        from app.models.im_file import ImServerRepository
+        server_id = int(self.get_body_argument("id", 0))
+        if not server_id:
+            return self.write({"code": 1, "msg": "参数错误"})
+        ImServerRepository.delete(server_id)
+        self.write({"code": 0, "msg": "删除成功"})
+
+
+class AdminEmployeeToolsHandler(AdminBaseHandler):
+    @tornado.web.authenticated
+    def get(self):
+        self.render("admin_employee_tools.html")
+
+
+class AdminEmployeeToolsListHandler(AdminBaseHandler):
+    @tornado.web.authenticated
+    def get(self):
+        from app.models.employee_tool import EmployeeToolRepository
+        page = int(self.get_argument("page", 1))
+        limit = int(self.get_argument("limit", 20))
+        keyword = self.get_argument("keyword", "").strip()
+        data, total = EmployeeToolRepository.get_list(page, limit, keyword or None)
+        self.write({"code": 0, "msg": "", "count": total, "data": data})
+
+
+class AdminEmployeeToolsAddHandler(AdminBaseHandler):
+    @tornado.web.authenticated
+    def post(self):
+        from app.models.employee_tool import EmployeeToolRepository
+        name = self.get_body_argument("name", "").strip()
+        tool_type = self.get_body_argument("tool_type", "api").strip()
+        api_service_id = int(self.get_body_argument("api_service_id", 0))
+        config = self.get_body_argument("config", "").strip()
+        description = self.get_body_argument("description", "").strip()
+        if not name:
+            return self.write({"code": 1, "msg": "工具名称不能为空"})
+        EmployeeToolRepository.add(name, tool_type, api_service_id, config, description)
+        self.write({"code": 0, "msg": "添加成功"})
+
+
+class AdminEmployeeToolsUpdateHandler(AdminBaseHandler):
+    @tornado.web.authenticated
+    def post(self):
+        from app.models.employee_tool import EmployeeToolRepository
+        tool_id = int(self.get_body_argument("id", 0))
+        name = self.get_body_argument("name", "").strip()
+        tool_type = self.get_body_argument("tool_type", "api").strip()
+        api_service_id = int(self.get_body_argument("api_service_id", 0))
+        config = self.get_body_argument("config", "").strip()
+        description = self.get_body_argument("description", "").strip()
+        status = int(self.get_body_argument("status", 1))
+        if not tool_id or not name:
+            return self.write({"code": 1, "msg": "参数错误"})
+        EmployeeToolRepository.update(
+            tool_id, name, tool_type, api_service_id, config, description, status
+        )
+        self.write({"code": 0, "msg": "更新成功"})
+
+
+class AdminEmployeeToolsDeleteHandler(AdminBaseHandler):
+    @tornado.web.authenticated
+    def post(self):
+        from app.models.employee_tool import EmployeeToolRepository
+        tool_id = int(self.get_body_argument("id", 0))
+        if not tool_id:
+            return self.write({"code": 1, "msg": "参数错误"})
+        EmployeeToolRepository.delete(tool_id)
+        self.write({"code": 0, "msg": "删除成功"})
+
+
+class AdminEmployeeToolsBindHandler(AdminBaseHandler):
+    @tornado.web.authenticated
+    def post(self):
+        from app.models.employee_tool import EmployeeToolRepository
+        employee_id = int(self.get_body_argument("employee_id", 0))
+        tool_ids_raw = self.get_body_argument("tool_ids", "[]")
+        if not employee_id:
+            return self.write({"code": 1, "msg": "参数错误"})
+        try:
+            tool_ids = json.loads(tool_ids_raw)
+        except Exception:
+            tool_ids = []
+        EmployeeToolRepository.save_bindings(employee_id, tool_ids)
+        self.write({"code": 0, "msg": "绑定成功"})
+
+
+class AdminEmployeeToolsBindingsHandler(AdminBaseHandler):
+    @tornado.web.authenticated
+    def get(self):
+        from app.models.employee_tool import EmployeeToolRepository
+        employee_id = int(self.get_argument("employee_id", 0))
+        if not employee_id:
+            return self.write({"code": 1, "msg": "参数错误"})
+        tool_ids = EmployeeToolRepository.get_binding_ids(employee_id)
+        self.write({"code": 0, "msg": "", "data": tool_ids})
+

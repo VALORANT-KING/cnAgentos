@@ -72,6 +72,32 @@ class ImMessageRepository:
             return items
 
     @staticmethod
+    def get_ai_context(user_id, receiver_type, receiver_id, limit=10):
+        """获取与数字员工相关的多轮对话上下文"""
+        base = ImMessageRepository._sender_sql()
+        if receiver_type == "user":
+            sql = base + """
+                WHERE m.receiver_type = 'user' AND (
+                    (m.sender_id = ? AND m.receiver_id = ?)
+                    OR (m.sender_id = ? AND m.receiver_id = ?)
+                ) AND m.msg_type IN ('text', 'employee_call')
+            """
+            params = [user_id, receiver_id, receiver_id, user_id]
+        else:
+            sql = base + """
+                WHERE m.receiver_type = 'group' AND m.receiver_id = ?
+                AND m.msg_type IN ('text', 'employee_call')
+            """
+            params = [receiver_id]
+        sql += " ORDER BY m.id DESC LIMIT ?"
+        params.append(limit)
+        with get_connection() as conn:
+            rows = conn.execute(sql, params).fetchall()
+            items = [dict(r) for r in rows]
+            items.reverse()
+            return items
+
+    @staticmethod
     def get_recent_conversations(user_id, limit=30):
         """最近会话摘要（好友+群）"""
         with get_connection() as conn:

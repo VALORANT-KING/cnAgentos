@@ -511,3 +511,184 @@ def init_db():
                 conn.commit()
         except Exception:
             pass
+
+        # im_servers 优先级字段
+        try:
+            conn.execute("ALTER TABLE im_servers ADD COLUMN priority INTEGER DEFAULT 0")
+            conn.commit()
+        except Exception:
+            pass
+
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS im_group_employees(
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                group_id INTEGER NOT NULL,
+                employee_id INTEGER NOT NULL,
+                create_at TEXT NOT NULL DEFAULT(datetime('now'))
+            )
+            """
+        )
+
+        # 数字员工工具集
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS employee_tools(
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL,
+                tool_type TEXT DEFAULT 'api',
+                api_service_id INTEGER DEFAULT 0,
+                config TEXT DEFAULT '',
+                description TEXT DEFAULT '',
+                status INTEGER NOT NULL DEFAULT 1,
+                create_at TEXT NOT NULL DEFAULT(datetime('now'))
+            )
+            """
+        )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS employee_tool_bindings(
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                employee_id INTEGER NOT NULL,
+                tool_id INTEGER NOT NULL,
+                create_at TEXT NOT NULL DEFAULT(datetime('now'))
+            )
+            """
+        )
+
+        # 插入毒鸡汤数字员工（不修改已有员工）
+        try:
+            existing = conn.execute(
+                "SELECT id FROM digital_employees WHERE alias = ?", ("@毒鸡汤",)
+            ).fetchone()
+            if not existing:
+                conn.execute(
+                    "INSERT INTO digital_employees(name, alias, category, agent_type, icon, description, sort_order) VALUES(?,?,?,?,?,?,?)",
+                    ("毒鸡汤", "@毒鸡汤", "普通", "local", "fa-heart-broken", "随机毒鸡汤语录，治愈（或致郁）你的心灵", 4)
+                )
+                conn.commit()
+        except Exception:
+            pass
+
+        # 插入默认工具集
+        try:
+            if not conn.execute("SELECT id FROM employee_tools LIMIT 1").fetchone():
+                weather_api = conn.execute(
+                    "SELECT id FROM api_services WHERE name = '三日天气'"
+                ).fetchone()
+                music_api = conn.execute(
+                    "SELECT id FROM api_services WHERE name = '随机音乐'"
+                ).fetchone()
+                w_id = weather_api["id"] if weather_api else 0
+                m_id = music_api["id"] if music_api else 0
+                conn.execute(
+                    "INSERT INTO employee_tools(name, tool_type, api_service_id, description) VALUES(?,?,?,?)",
+                    ("天气查询", "api", w_id, "调用三日天气 API，返回城市天气预报")
+                )
+                conn.execute(
+                    "INSERT INTO employee_tools(name, tool_type, api_service_id, description) VALUES(?,?,?,?)",
+                    ("随机音乐", "api", m_id, "调用随机音乐 API")
+                )
+                conn.execute(
+                    "INSERT INTO employee_tools(name, tool_type, config, description) VALUES(?,?,?,?)",
+                    ("川农知识库", "knowledge", '{"topics":["校园","专业","招生","文化"]}', "四川农业大学相关知识库")
+                )
+                conn.commit()
+        except Exception:
+            pass
+
+        # 为已有数字员工绑定默认工具
+        try:
+            xiao_nong = conn.execute(
+                "SELECT id FROM digital_employees WHERE alias = '@川小农'"
+            ).fetchone()
+            weather_emp = conn.execute(
+                "SELECT id FROM digital_employees WHERE alias = '@天气'"
+            ).fetchone()
+            kb_tool = conn.execute(
+                "SELECT id FROM employee_tools WHERE name = '川农知识库'"
+            ).fetchone()
+            weather_tool = conn.execute(
+                "SELECT id FROM employee_tools WHERE name = '天气查询'"
+            ).fetchone()
+            if xiao_nong and kb_tool:
+                exists = conn.execute(
+                    "SELECT id FROM employee_tool_bindings WHERE employee_id = ? AND tool_id = ?",
+                    (xiao_nong["id"], kb_tool["id"]),
+                ).fetchone()
+                if not exists:
+                    conn.execute(
+                        "INSERT INTO employee_tool_bindings(employee_id, tool_id) VALUES(?,?)",
+                        (xiao_nong["id"], kb_tool["id"]),
+                    )
+            if weather_emp and weather_tool:
+                exists = conn.execute(
+                    "SELECT id FROM employee_tool_bindings WHERE employee_id = ? AND tool_id = ?",
+                    (weather_emp["id"], weather_tool["id"]),
+                ).fetchone()
+                if not exists:
+                    conn.execute(
+                        "INSERT INTO employee_tool_bindings(employee_id, tool_id) VALUES(?,?)",
+                        (weather_emp["id"], weather_tool["id"]),
+                    )
+            conn.commit()
+        except Exception:
+            pass
+        try:
+            parent = conn.execute(
+                "SELECT id FROM modules WHERE name = '智能聊天'"
+            ).fetchone()
+            if not parent:
+                conn.execute(
+                    "INSERT INTO modules(name, icon, url, parent_id, sort_order) VALUES(?,?,?,?,?)",
+                    ("智能聊天", "layui-icon-dialogue", "", 0, 9)
+                )
+                parent_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+            else:
+                parent_id = parent["id"]
+            menus = [
+                ("群管理", "/admin/im/groups"),
+                ("文件管理", "/admin/im/files"),
+                ("服务器管理", "/admin/im/servers"),
+                ("工具管理", "/admin/employee/tools"),
+            ]
+            for i, (name, url) in enumerate(menus, 1):
+                exists = conn.execute(
+                    "SELECT id FROM modules WHERE name = ? AND parent_id = ?",
+                    (name, parent_id),
+                ).fetchone()
+                if not exists:
+                    conn.execute(
+                        "INSERT INTO modules(name, icon, url, parent_id, sort_order) VALUES(?,?,?,?,?)",
+                        (name, "layui-icon-template-1", url, parent_id, i)
+                    )
+            conn.commit()
+            role = conn.execute(
+                "SELECT id FROM roles WHERE name = ?", ("超级管理员",)
+            ).fetchone()
+            if role:
+                role_id = role["id"]
+                for m in conn.execute(
+                    "SELECT id FROM modules WHERE parent_id = ?", (parent_id,)
+                ).fetchall():
+                    perm = conn.execute(
+                        "SELECT id FROM role_permissions WHERE role_id = ? AND module_id = ?",
+                        (role_id, m["id"]),
+                    ).fetchone()
+                    if not perm:
+                        conn.execute(
+                            "INSERT INTO role_permissions(role_id, module_id) VALUES(?,?)",
+                            (role_id, m["id"]),
+                        )
+                admin_perm = conn.execute(
+                    "SELECT id FROM role_permissions WHERE role_id = ? AND module_id = ?",
+                    (role_id, parent_id),
+                ).fetchone()
+                if not admin_perm:
+                    conn.execute(
+                        "INSERT INTO role_permissions(role_id, module_id) VALUES(?,?)",
+                        (role_id, parent_id),
+                    )
+                conn.commit()
+        except Exception:
+            pass

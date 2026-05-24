@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>群管理</title>
+    <link rel="stylesheet" href="/static/dist/layui-v2.13.6/layui/css/layui.css">
+</head>
+<body class="layui-layout-body" style="padding: 15px;">
+    <div class="layui-card">
+        <div class="layui-card-header">智能聊天 - 群管理</div>
+        <div class="layui-card-body">
+            <div class="layui-form layui-form-pane" style="margin-bottom:10px;">
+                <div class="layui-inline">
+                    <input type="text" id="keyword" placeholder="搜索群名称" class="layui-input">
+                </div>
+                <div class="layui-inline">
+                    <button class="layui-btn" id="btnSearch">搜索</button>
+                </div>
+            </div>
+            <table id="groupTable" lay-filter="groupTable"></table>
+        </div>
+    </div>
+
+    <script src="/static/dist/layui-v2.13.6/layui/layui.js"></script>
+    <script>
+        layui.use(['table', 'layer', 'jquery'], function(){
+            var table = layui.table, layer = layui.layer, $ = layui.jquery;
+
+            function getCookie(name) {
+                var r = document.cookie.match("\\b" + name + "=([^;]*)\\b");
+                return r ? r[1] : undefined;
+            }
+            $.ajaxSetup({
+                beforeSend: function(xhr, settings) {
+                    if (settings.type === 'POST') {
+                        xhr.setRequestHeader("X-XSRFToken", getCookie("_xsrf"));
+                    }
+                }
+            });
+
+            table.render({
+                elem: '#groupTable',
+                url: '/admin/im/groups/list',
+                cols: [[
+                    {field: 'id', title: 'ID', width: 70},
+                    {field: 'name', title: '群名称', width: 160},
+                    {field: 'owner_name', title: '群主', width: 120},
+                    {field: 'member_count', title: '成员数', width: 90},
+                    {field: 'status', title: '状态', width: 90, templet: function(d){
+                        return d.status === 1
+                            ? '<span class="layui-badge layui-bg-green">正常</span>'
+                            : '<span class="layui-badge layui-bg-gray">已封禁/解散</span>';
+                    }},
+                    {field: 'announcement', title: '公告'},
+                    {field: 'create_at', title: '创建时间', width: 170},
+                    {title: '操作', width: 280, templet: function(d){
+                        return '<a class="layui-btn layui-btn-xs" lay-event="members">成员</a>' +
+                               '<a class="layui-btn layui-btn-xs layui-btn-normal" lay-event="announce">公告</a>' +
+                               (d.status === 1
+                                   ? '<a class="layui-btn layui-btn-xs layui-btn-warm" lay-event="ban">封禁</a>'
+                                   : '<a class="layui-btn layui-btn-xs" lay-event="unban">解封</a>') +
+                               '<a class="layui-btn layui-btn-danger layui-btn-xs" lay-event="dissolve">解散</a>';
+                    }}
+                ]]
+            });
+
+            $('#btnSearch').click(function(){
+                table.reload('groupTable', {where: {keyword: $('#keyword').val()}});
+            });
+
+            table.on('tool(groupTable)', function(obj){
+                var d = obj.data;
+                if (obj.event === 'members') {
+                    $.get('/admin/im/groups/members?group_id=' + d.id, function(res){
+                        if (res.code !== 0) return layer.msg(res.msg);
+                        var html = '<div style="padding:15px;"><p><b>' + d.name + '</b> 成员列表：</p><ul>';
+                        (res.data.members || []).forEach(function(m){
+                            html += '<li>' + m.username + ' (' + m.role + ')</li>';
+                        });
+                        (res.data.employees || []).forEach(function(e){
+                            html += '<li><i class="fas fa-robot"></i> ' + e.name + ' ' + e.alias + ' (数字员工)</li>';
+                        });
+                        html += '</ul></div>';
+                        layer.open({type: 1, title: '群成员', area: ['400px','400px'], content: html});
+                    });
+                } else if (obj.event === 'announce') {
+                    layer.prompt({title: '发布系统群公告', value: d.announcement || '', formType: 2}, function(val, idx){
+                        $.post('/admin/im/groups/announcement', {group_id: d.id, announcement: val}, function(res){
+                            layer.msg(res.msg);
+                            if (res.code === 0) { table.reload('groupTable'); layer.close(idx); }
+                        });
+                    });
+                } else if (obj.event === 'ban') {
+                    layer.confirm('确定封禁该群？', function(idx){
+                        $.post('/admin/im/groups/ban', {group_id: d.id, status: 0}, function(res){
+                            layer.msg(res.msg); table.reload('groupTable'); layer.close(idx);
+                        });
+                    });
+                } else if (obj.event === 'unban') {
+                    $.post('/admin/im/groups/ban', {group_id: d.id, status: 1}, function(res){
+                        layer.msg(res.msg); table.reload('groupTable');
+                    });
+                } else if (obj.event === 'dissolve') {
+                    layer.confirm('确定解散该群？此操作不可恢复', function(idx){
+                        $.post('/admin/im/groups/dissolve', {group_id: d.id}, function(res){
+                            layer.msg(res.msg); table.reload('groupTable'); layer.close(idx);
+                        });
+                    });
+                }
+            });
+        });
+    </script>
+</body>
+</html>

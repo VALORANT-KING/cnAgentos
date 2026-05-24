@@ -6,7 +6,7 @@
     <title>智能聊天 - 即时通信</title>
     <link rel="stylesheet" href="{{ static_url('dist/bootstrap-5.3.8-dist/css/bootstrap.min.css') }}">
     <link rel="stylesheet" href="{{ static_url('dist/fontawesome-free-5.15.4-web/css/all.min.css') }}">
-    <link rel="stylesheet" href="{{ static_url('css/im.css') }}">
+    <link rel="stylesheet" href="{{ static_url('css/im.css') }}?v=20260524e">
 </head>
 <body>
     <div class="im-app">
@@ -20,9 +20,16 @@
                 <button type="button" data-tab="friends">好友</button>
                 <button type="button" data-tab="groups">群聊</button>
             </div>
+            <div class="im-sidebar-actions">
+                <button type="button" class="btn btn-sm btn-outline-primary w-100 btn-friend-request" id="showRequestsBtn">
+                    <i class="fas fa-user-plus"></i> 好友申请
+                    <span id="requestBadge" class="request-red-dot" style="display:none;" title="有新的好友申请"></span>
+                </button>
+            </div>
             <div class="im-search" id="sideSearch" style="display:none;">
                 <input type="text" id="userSearchInput" placeholder="搜索用户名添加好友…">
                 <button type="button" class="btn btn-sm btn-primary w-100 mt-2" id="searchUserBtn">查找用户</button>
+                <div id="incomingRequestsBox" class="incoming-requests-box" style="display:none;"></div>
                 <div id="searchResults" class="mt-2"></div>
             </div>
             <div class="im-list" id="chatList"></div>
@@ -36,27 +43,35 @@
             <div class="im-main-header">
                 <h4 id="chatTitle">聊天</h4>
                 <div class="im-header-actions">
-                    <button type="button" id="showRequestsBtn" title="好友申请">
-                        <i class="fas fa-user-plus"></i> 申请<span id="requestBadge" class="badge-dot" style="display:none;">0</span>
-                    </button>
+                    <button type="button" id="showMembersBtn" title="群成员" style="display:none;"><i class="fas fa-users"></i> 成员</button>
+                    <button type="button" id="inviteGroupBtn" title="邀请入群" style="display:none;"><i class="fas fa-user-plus"></i> 邀请</button>
+                    <button type="button" id="deleteFriendBtn" title="删除好友" style="display:none;"><i class="fas fa-user-minus"></i> 删好友</button>
                     <button type="button" id="createGroupBtn" title="创建群"><i class="fas fa-users"></i> 建群</button>
                     <a href="/chat"><i class="fas fa-robot"></i> 问数</a>
                     <a href="/home"><i class="fas fa-home"></i></a>
                 </div>
             </div>
+            <div id="groupAnnouncement" class="im-group-announcement" style="display:none;"></div>
             <div class="im-messages" id="messagesBox"></div>
             <div class="im-input-bar">
+                <div class="emoji-panel" id="emojiPanel"></div>
+                <div class="sticker-panel" id="stickerPanel"></div>
                 <div class="im-toolbar">
                     <button type="button" id="emojiBtn" title="Emoji"><i class="far fa-smile"></i></button>
                     <button type="button" id="stickerBtn" title="动态表情"><i class="fas fa-grin-stars"></i></button>
-                    <button type="button" onclick="document.getElementById('fileInput').click()" title="发送文件"><i class="fas fa-paperclip"></i></button>
+                    <button type="button" id="filePickBtn" title="发送文件"><i class="fas fa-paperclip"></i></button>
                     <input type="file" id="fileInput" style="display:none;">
+                </div>
+                <div class="im-pending-file" id="pendingFileBar" style="display:none;">
+                    <i class="fas fa-file-alt"></i>
+                    <span id="pendingFileName"></span>
+                    <span class="im-pending-hint">已就绪，点击「发送」发出</span>
+                    <button type="button" id="cancelPendingFileBtn" title="取消"><i class="fas fa-times"></i></button>
                 </div>
                 <div class="im-input-row">
                     <div class="im-input-wrap">
-                        <div class="emoji-panel" id="emojiPanel"></div>
-                        <div class="sticker-panel" id="stickerPanel"></div>
-                        <textarea id="msgInput" rows="2" placeholder="输入消息，群聊中 @川小农 可唤起数字员工…"></textarea>
+                        <div class="employee-hint" id="employeeHint"></div>
+                        <textarea id="msgInput" rows="2" placeholder="输入消息，输入 @ 可唤起数字员工…"></textarea>
                     </div>
                     <button type="button" class="im-send-btn" id="sendBtn">发送</button>
                 </div>
@@ -79,13 +94,35 @@
     </div>
 
     <div class="modal-overlay" id="createGroupModal">
-        <div class="modal-box">
+        <div class="modal-box" style="max-width:480px;">
             <h5>创建群聊</h5>
             <input type="text" class="form-control mb-3" id="groupNameInput" placeholder="群名称">
-            <p class="small text-muted">选择好友加入：</p>
+            <p class="small text-muted mb-1">选择好友：</p>
             <div id="groupMemberCheckboxes" class="modal-list"></div>
+            <p class="small text-muted mb-1 mt-2">拉入数字员工（可选）：</p>
+            <div id="groupEmployeeCheckboxes" class="modal-list"></div>
             <button type="button" class="btn btn-success btn-sm" id="confirmCreateGroup">创建</button>
             <button type="button" class="btn btn-secondary btn-sm" onclick="document.getElementById('createGroupModal').classList.remove('show')">取消</button>
+        </div>
+    </div>
+
+    <div class="modal-overlay" id="inviteGroupModal">
+        <div class="modal-box" style="max-width:480px;">
+            <h5>邀请入群</h5>
+            <p class="small text-muted mb-1">选择好友：</p>
+            <div id="inviteMemberCheckboxes" class="modal-list"></div>
+            <p class="small text-muted mb-1 mt-2">拉入数字员工：</p>
+            <div id="inviteEmployeeCheckboxes" class="modal-list"></div>
+            <button type="button" class="btn btn-success btn-sm" id="confirmInviteGroup">邀请</button>
+            <button type="button" class="btn btn-secondary btn-sm" onclick="document.getElementById('inviteGroupModal').classList.remove('show')">取消</button>
+        </div>
+    </div>
+
+    <div class="modal-overlay" id="membersModal">
+        <div class="modal-box">
+            <h5 id="membersModalTitle">群成员</h5>
+            <div id="membersBox" class="modal-list"></div>
+            <button type="button" class="btn btn-secondary btn-sm mt-3" onclick="document.getElementById('membersModal').classList.remove('show')">关闭</button>
         </div>
     </div>
 
@@ -93,6 +130,6 @@
         var IM_USERNAME = "{{ username }}";
         var IM_USER_ID = {{ user_id }};
     </script>
-    <script src="{{ static_url('js/im.js') }}"></script>
+    <script src="{{ static_url('js/im.js') }}?v=20260524e"></script>
 </body>
 </html>

@@ -68,5 +68,6 @@ class DigitalEmployeeRepository:
     @staticmethod
     def delete(emp_id):
         with get_connection() as conn:
+            conn.execute("DELETE FROM employee_tool_bindings WHERE employee_id = ?", (emp_id,))
             conn.execute("DELETE FROM digital_employees WHERE id = ?", (emp_id,))
             conn.commit()
