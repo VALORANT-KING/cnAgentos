@@ -169,7 +169,7 @@ class ChatSendHandler(ChatBaseHandler):
 
     def _parse_employee_call(self, content):
         import re
-        m = re.match(r'^@(\S+?)[：:\s]*(.*)', content, re.S)
+        m = re.match(r'^@(\S+)[：:\s]*(.*)', content, re.S)
         if m:
             alias = "@" + m.group(1)
             param = m.group(2).strip()
@@ -224,9 +224,11 @@ class ChatSendHandler(ChatBaseHandler):
 
         try:
             from openai import OpenAI
+            import httpx
             client = OpenAI(
                 api_key=default_model.get("api_key") or "sk-no-key-required",
-                base_url=default_model.get("base_url") or "https://api.openai.com/v1"
+                base_url=default_model.get("base_url") or "https://api.openai.com/v1",
+                http_client=httpx.Client(timeout=httpx.Timeout(15.0, connect=5.0))
             )
             resp = client.chat.completions.create(
                 model=default_model.get("model_name") or "gpt-3.5-turbo",
@@ -238,6 +240,13 @@ class ChatSendHandler(ChatBaseHandler):
             self._update_token_stats(default_model, resp)
             return reply
         except Exception as e:
+            err_str = str(e).lower()
+            if "timeout" in err_str or "timed out" in err_str:
+                return f"⚠️ **{default_model['name']}** 模型请求超时。请在后台模型引擎中检查该模型的 `base_url` 和 `api_key` 配置是否正确，或切换为可正常访问的模型。"
+            if "connection" in err_str or "connect" in err_str or "refused" in err_str:
+                return f"⚠️ **{default_model['name']}** 模型连接失败。请检查 `base_url` 是否正确，该地址是否可正常访问。"
+            if "401" in err_str or "unauthorized" in err_str or "auth" in err_str:
+                return f"⚠️ **{default_model['name']}** 模型鉴权失败。请检查 `api_key` 是否正确配置。"
             return f"❌ AI 调用出错: {str(e)}"
 
     def _update_token_stats(self, model, resp):
@@ -291,9 +300,11 @@ class ChatSendHandler(ChatBaseHandler):
 
         try:
             from openai import OpenAI
+            import httpx
             client = OpenAI(
                 api_key=model.get("api_key") or "sk-no-key-required",
-                base_url=model.get("base_url") or "https://api.openai.com/v1"
+                base_url=model.get("base_url") or "https://api.openai.com/v1",
+                http_client=httpx.Client(timeout=httpx.Timeout(15.0, connect=5.0))
             )
             resp = client.chat.completions.create(
                 model=model.get("model_name") or "gpt-3.5-turbo",
@@ -305,6 +316,13 @@ class ChatSendHandler(ChatBaseHandler):
             self._update_token_stats(model, resp)
             return reply
         except Exception as e:
+            err_str = str(e).lower()
+            if "timeout" in err_str or "timed out" in err_str:
+                return f"⚠️ **{model['name']}** 模型请求超时。请在后台模型引擎中检查该模型的 `base_url` 和 `api_key` 配置是否正确。"
+            if "connection" in err_str or "connect" in err_str or "refused" in err_str:
+                return f"⚠️ **{model['name']}** 模型连接失败。请检查 `base_url` 是否正确。"
+            if "401" in err_str or "unauthorized" in err_str or "auth" in err_str:
+                return f"⚠️ **{model['name']}** 模型鉴权失败。请检查 `api_key` 是否正确配置。"
             return f"❌ AI 对话出错: {str(e)}"
 
 
@@ -388,9 +406,11 @@ class ChatStreamHandler(ChatBaseHandler):
         self.set_header("Connection", "keep-alive")
         try:
             from openai import OpenAI
+            import httpx
             client = OpenAI(
                 api_key=model.get("api_key") or "sk-no-key-required",
-                base_url=model.get("base_url") or "https://api.openai.com/v1"
+                base_url=model.get("base_url") or "https://api.openai.com/v1",
+                http_client=httpx.Client(timeout=httpx.Timeout(30.0, connect=5.0))
             )
             stream = client.chat.completions.create(
                 model=model.get("model_name") or "gpt-3.5-turbo",
@@ -410,14 +430,22 @@ class ChatStreamHandler(ChatBaseHandler):
             self.write(f"data: {json.dumps({'content': '', 'done': True})}\n\n")
             self.finish()
         except Exception as e:
-            error_msg = f"❌ AI 对话出错: {str(e)}"
+            err_str = str(e).lower()
+            if "timeout" in err_str or "timed out" in err_str:
+                error_msg = f"⚠️ **{model['name']}** 模型请求超时。请在后台引擎中检查配置。"
+            elif "connection" in err_str or "connect" in err_str or "refused" in err_str:
+                error_msg = f"⚠️ **{model['name']}** 模型连接失败。请检查 `base_url` 是否正确。"
+            elif "401" in err_str or "unauthorized" in err_str or "auth" in err_str:
+                error_msg = f"⚠️ **{model['name']}** 模型鉴权失败。请检查 `api_key`。"
+            else:
+                error_msg = f"❌ AI 对话出错: {str(e)}"
             ChatMessageRepository.add(session_id, "assistant", error_msg)
             self.write(f"data: {json.dumps({'error': error_msg})}\n\n")
             self.finish()
 
     def _parse_employee_call(self, content):
         import re
-        m = re.match(r'^@(\S+?)[：:\s]*(.*)', content, re.S)
+        m = re.match(r'^@(\S+)[：:\s]*(.*)', content, re.S)
         if m:
             return "@" + m.group(1), m.group(2).strip()
         m2 = re.match(r'^@(\S+)$', content.strip())
