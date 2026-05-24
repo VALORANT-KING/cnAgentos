@@ -118,10 +118,12 @@ class ChatSendHandler(ChatBaseHandler):
 
         ChatMessageRepository.add(session_id, "user", content)
 
-        employee_alias, employee_param = self._parse_employee_call(content)
+        employee_alias, employee_param, matched_emp = self._resolve_employee_alias(content)
+        if not employee_alias:
+            employee_alias, employee_param = self._parse_employee_call(content)
 
         if employee_alias:
-            employee = DigitalEmployeeRepository.get_by_alias(employee_alias)
+            employee = matched_emp or (DigitalEmployeeRepository.get_by_alias(employee_alias) if employee_alias else None)
             if not employee or employee.get("status") != 1:
                 ChatMessageRepository.add(session_id, "assistant", f"未找到数字员工 {employee_alias} 或该员工已禁用")
                 return self._session_response(session_id)
@@ -178,6 +180,32 @@ class ChatSendHandler(ChatBaseHandler):
         if m2:
             return "@" + m2.group(1), ""
         return None, None
+
+    @staticmethod
+    def _parse_employee_call(content):
+        import re
+        m = re.match(r'^@(\S+)[：:\s]*(.*)', content, re.S)
+        if m:
+            alias = "@" + m.group(1)
+            param = m.group(2).strip()
+            return alias, param
+        m2 = re.match(r'^@(\S+)$', content.strip())
+        if m2:
+            return "@" + m2.group(1), ""
+        return None, None
+
+    @staticmethod
+    def _resolve_employee_alias(content):
+        employees = DigitalEmployeeRepository.get_all()
+        if not employees:
+            return None, None, content
+        sorted_emps = sorted(employees, key=lambda e: len(e.get("alias", "")), reverse=True)
+        for emp in sorted_emps:
+            alias = emp.get("alias", "")
+            if content.startswith(alias):
+                param = content[len(alias):].lstrip("：: \t")
+                return alias, param, emp
+        return None, None, content
 
     @staticmethod
     def _format_api_result(employee, resp_json):
@@ -259,11 +287,12 @@ class ChatSendHandler(ChatBaseHandler):
                 return f"❌ 数字员工 {employee['name']} 关联的 API 服务不存在"
 
             url = api["url"]
-            if param and "{city}" in url:
-                url = url.replace("{city}", urllib.parse.quote(param))
-            if param and "city=" in url:
-                separator = "&" if "?" in url else "?"
-                url = f"{url}{separator}city={urllib.parse.quote(param)}"
+            if param:
+                if "{city}" in url:
+                    url = url.replace("{city}", urllib.parse.quote(param))
+                else:
+                    separator = "&" if "?" in url else "?"
+                    url = f"{url}{separator}city={urllib.parse.quote(param)}"
 
             safe_headers = {"accept-encoding": "gzip, deflate", "user-agent": "Mozilla/5.0"}
             resp = requests.get(url, headers=safe_headers, timeout=10, verify=False)
@@ -418,9 +447,12 @@ class ChatStreamHandler(ChatBaseHandler):
             self.finish()
             return
 
-        employee_alias, employee_param = self._parse_employee_call(content)
+        employee_alias, employee_param, matched_emp = self._resolve_employee_alias(content)
+        if not employee_alias:
+            employee_alias, employee_param = self._parse_employee_call(content)
+
         if employee_alias:
-            employee = DigitalEmployeeRepository.get_by_alias(employee_alias)
+            employee = matched_emp or (DigitalEmployeeRepository.get_by_alias(employee_alias) if employee_alias else None)
             if employee and employee.get("status") != 1:
                 self.set_header("Content-Type", "text/event-stream; charset=utf-8")
                 self.write(f"data: {json.dumps({'content': f'数字员工 {employee_alias} 已禁用', 'done': True})}\n\n")
@@ -541,9 +573,12 @@ class ChatStreamHandler(ChatBaseHandler):
             if not api:
                 return f"❌ 数字员工 {employee['name']} 关联的 API 服务不存在"
             url = api["url"]
-            if param and "city=" in url:
-                sep = "&" if "?" in url else "?"
-                url = f"{url}{sep}city={urllib.parse.quote(param)}"
+            if param:
+                if "{city}" in url:
+                    url = url.replace("{city}", urllib.parse.quote(param))
+                else:
+                    sep = "&" if "?" in url else "?"
+                    url = f"{url}{sep}city={urllib.parse.quote(param)}"
             safe_headers = {"accept-encoding": "gzip, deflate", "user-agent": "Mozilla/5.0"}
             resp = requests.get(url, headers=safe_headers, timeout=10, verify=False)
             if resp.status_code == 200:
