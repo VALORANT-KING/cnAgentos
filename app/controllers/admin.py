@@ -6,6 +6,7 @@ from app.models.module import ModuleRepository
 from app.models.role import RoleRepository
 from app.models.model_engine import ModelEngineRepository
 from app.models.watch import WatchRepository
+from app.models.api_service import ApiServiceRepository
 import requests
 import urllib3
 from bs4 import BeautifulSoup
@@ -739,5 +740,70 @@ class AdminWatchDataDeleteHandler(AdminBaseHandler):
         
         ids = [int(i) for i in ids_str.split(',') if i]
         WatchRepository.delete_data(ids)
+        self.write({"code": 0, "msg": "删除成功"})
+
+
+class AdminApiManageHandler(AdminBaseHandler):
+    @tornado.web.authenticated
+    def get(self):
+        self.render("admin_api_manage.html")
+
+
+class AdminApiListHandler(AdminBaseHandler):
+    @tornado.web.authenticated
+    def get(self):
+        page = int(self.get_argument("page", 1))
+        limit = int(self.get_argument("limit", 20))
+        keyword = self.get_argument("keyword", "").strip()
+
+        data, total = ApiServiceRepository.get_list(page, limit, keyword)
+        self.write({"code": 0, "msg": "", "count": total, "data": data})
+
+
+class AdminApiAddHandler(AdminBaseHandler):
+    @tornado.web.authenticated
+    def post(self):
+        name = self.get_body_argument("name", "").strip()
+        url = self.get_body_argument("url", "").strip()
+        method = self.get_body_argument("method", "GET").strip()
+        resp_format = self.get_body_argument("resp_format", "JSON").strip()
+        qps_limit = int(self.get_body_argument("qps_limit", 0))
+        token = self.get_body_argument("token", "").strip()
+        description = self.get_body_argument("description", "").strip()
+
+        if not name or not url:
+            return self.write({"code": 1, "msg": "接口名称和地址不能为空"})
+
+        ApiServiceRepository.add(name, url, method, resp_format, qps_limit, token, description)
+        self.write({"code": 0, "msg": "添加成功"})
+
+
+class AdminApiUpdateHandler(AdminBaseHandler):
+    @tornado.web.authenticated
+    def post(self):
+        api_id = int(self.get_body_argument("id", 0))
+        name = self.get_body_argument("name", "").strip()
+        url = self.get_body_argument("url", "").strip()
+        method = self.get_body_argument("method", "GET").strip()
+        resp_format = self.get_body_argument("resp_format", "JSON").strip()
+        qps_limit = int(self.get_body_argument("qps_limit", 0))
+        token = self.get_body_argument("token", "").strip()
+        status = int(self.get_body_argument("status", 1))
+        description = self.get_body_argument("description", "").strip()
+
+        if not api_id or not name or not url:
+            return self.write({"code": 1, "msg": "参数错误"})
+
+        ApiServiceRepository.update(api_id, name, url, method, resp_format, qps_limit, token, status, description)
+        self.write({"code": 0, "msg": "更新成功"})
+
+
+class AdminApiDeleteHandler(AdminBaseHandler):
+    @tornado.web.authenticated
+    def post(self):
+        api_id = int(self.get_body_argument("id", 0))
+        if not api_id:
+            return self.write({"code": 1, "msg": "参数错误"})
+        ApiServiceRepository.delete(api_id)
         self.write({"code": 0, "msg": "删除成功"})
 

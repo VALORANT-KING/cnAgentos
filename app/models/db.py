@@ -98,6 +98,9 @@ def init_db():
                 conn.execute("INSERT INTO modules(name, icon, url, parent_id, sort_order) VALUES(?,?,?,?,?)", ("系统设置", "layui-icon-set", "", 0, 7))
                 conn.execute("INSERT INTO modules(name, icon, url, parent_id, sort_order) VALUES(?,?,?,?,?)", ("系统参数", "layui-icon-set-fill", "", 18, 1))
                 conn.execute("INSERT INTO modules(name, icon, url, parent_id, sort_order) VALUES(?,?,?,?,?)", ("系统统计", "layui-icon-chart", "", 18, 2))
+                # 任务六：接口管理模块
+                conn.execute("INSERT INTO modules(name, icon, url, parent_id, sort_order) VALUES(?,?,?,?,?)", ("接口管理", "layui-icon-list", "", 0, 8))
+                conn.execute("INSERT INTO modules(name, icon, url, parent_id, sort_order) VALUES(?,?,?,?,?)", ("接口列表", "layui-icon-template-1", "/admin/api/manage", 20, 1))
                 conn.commit()
         except Exception:
             pass
@@ -109,6 +112,26 @@ def init_db():
                 conn.execute("UPDATE modules SET url = '/admin/watch/collect' WHERE name = '采集任务' AND (url = '' OR url IS NULL)")
                 conn.execute("UPDATE modules SET url = '/admin/watch/data' WHERE name = '数据管理' AND (url = '' OR url IS NULL)")
                 conn.commit()
+        except Exception:
+            pass
+
+        # 确保接口管理模块的内容存在
+        try:
+            with get_connection() as conn:
+                conn.execute("UPDATE modules SET url = '/admin/api/manage' WHERE name = '接口列表' AND (url = '' OR url IS NULL)")
+                conn.commit()
+        except Exception:
+            pass
+
+        # 确保接口管理模块存在 (已存在数据库的情况)
+        try:
+            with get_connection() as conn:
+                existing = conn.execute("SELECT id FROM modules WHERE name = '接口管理'").fetchone()
+                if not existing:
+                    conn.execute("INSERT INTO modules(name, icon, url, parent_id, sort_order) VALUES(?,?,?,?,?)", ("接口管理", "layui-icon-list", "", 0, 8))
+                    pkid = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+                    conn.execute("INSERT INTO modules(name, icon, url, parent_id, sort_order) VALUES(?,?,?,?,?)", ("接口列表", "layui-icon-template-1", "/admin/api/manage", pkid, 1))
+                    conn.commit()
         except Exception:
             pass
 
@@ -201,6 +224,24 @@ def init_db():
                 publish_time TEXT,
                 create_at TEXT NOT NULL DEFAULT(datetime('now')),
                 FOREIGN KEY (source_id) REFERENCES watch_sources(id)
+            )
+            """
+        )
+
+        # 任务六：接口管理表
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS api_services(
+                id integer PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL,
+                url TEXT NOT NULL,
+                method TEXT DEFAULT 'GET',
+                resp_format TEXT DEFAULT 'JSON',
+                qps_limit INTEGER DEFAULT 0,
+                token TEXT DEFAULT '',
+                status INTEGER NOT NULL DEFAULT 1,
+                description TEXT DEFAULT '',
+                create_at TEXT NOT NULL DEFAULT(datetime('now'))
             )
             """
         )

@@ -61,6 +61,11 @@ from app.controllers.admin import AdminWatchDoCollectHandler
 from app.controllers.admin import AdminWatchDataHandler
 from app.controllers.admin import AdminWatchDataListHandler
 from app.controllers.admin import AdminWatchDataDeleteHandler
+from app.controllers.admin import AdminApiManageHandler
+from app.controllers.admin import AdminApiListHandler
+from app.controllers.admin import AdminApiAddHandler
+from app.controllers.admin import AdminApiUpdateHandler
+from app.controllers.admin import AdminApiDeleteHandler
 from app.models.db import init_db
 
 
@@ -170,7 +175,12 @@ def make_app():
             (r"/admin/watch/docollect", AdminWatchDoCollectHandler),
             (r"/admin/watch/data", AdminWatchDataHandler),
             (r"/admin/watch/data/list", AdminWatchDataListHandler),
-            (r"/admin/watch/data/delete", AdminWatchDataDeleteHandler)
+            (r"/admin/watch/data/delete", AdminWatchDataDeleteHandler),
+            (r"/admin/api/manage", AdminApiManageHandler),
+            (r"/admin/api/list", AdminApiListHandler),
+            (r"/admin/api/add", AdminApiAddHandler),
+            (r"/admin/api/update", AdminApiUpdateHandler),
+            (r"/admin/api/delete", AdminApiDeleteHandler)
         ], **settings)
 
 if __name__ == "__main__":
