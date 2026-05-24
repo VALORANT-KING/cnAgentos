@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>功能管理</title>
+    <link rel="stylesheet" href="/static/dist/layui-v2.13.6/layui/css/layui.css">
+    <style>
+        body { padding: 0; margin: 0; background: #f2f2f2; }
+        .page-header { background: #fff; padding: 12px 20px; border-bottom: 1px solid #f0f0f0; }
+        .page-header h2 { font-size: 16px; color: #333; margin: 0; font-weight: 500; }
+        .page-content { padding: 15px; }
+        .table-card { background: #fff; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.06); }
+        .toolbar { padding: 15px 20px 10px; }
+    </style>
+</head>
+<body>
+    <div class="page-header">
+        <h2><i class="layui-icon layui-icon-template-1" style="margin-right:8px;"></i>功能管理</h2>
+    </div>
+    <div class="page-content">
+        <div class="table-card">
+            <div class="toolbar">
+                <button class="layui-btn layui-btn-sm" id="btnAdd"><i class="layui-icon layui-icon-addition"></i> 新增模块</button>
+            </div>
+            <table id="moduleTable" lay-filter="moduleTable"></table>
+        </div>
+    </div>
+
+    <script src="/static/dist/layui-v2.13.6/layui/layui.js"></script>
+    <script>
+        layui.use(['table', 'layer', 'form', 'jquery'], function(){
+            var table = layui.table, layer = layui.layer, form = layui.form, $ = layui.jquery;
+
+            function getCookie(n) { var r = document.cookie.match("\\b" + n + "=([^;]*)\\b"); return r ? r[1] : undefined; }
+            $.ajaxSetup({ beforeSend: function(xhr, s) { if (s.type === 'POST') { var x = getCookie("_xsrf"); if (x) xhr.setRequestHeader("X-XSRFToken", x); } } });
+
+            table.render({
+                elem: '#moduleTable', url: '/admin/module/list', page: false, height: 'full-180',
+                cols: [[
+                    {field: 'id', title: 'ID', width: 60},
+                    {field: 'name', title: '模块名称', minWidth: 120},
+                    {field: 'icon', title: '图标', width: 100},
+                    {field: 'url', title: 'URL路径', minWidth: 150},
+                    {field: 'parent_id', title: '父级ID', width: 80},
+                    {field: 'sort_order', title: '排序', width: 70},
+                    {field: 'status', title: '状态', width: 80, templet: function(d){ return d.status == 1 ? '<span class="layui-badge layui-bg-green">启用</span>' : '<span class="layui-badge layui-bg-gray">禁用</span>'; }},
+                    {title: '操作', width: 150, fixed: 'right', templet: function(d){
+                        return '<a class="layui-btn layui-btn-xs" lay-event="edit">编辑</a><a class="layui-btn layui-btn-danger layui-btn-xs" lay-event="delete">删除</a>';
+                    }}
+                ]]
+            });
+
+            function openForm(title, data) {
+                var isEdit = !!data;
+                $.get('/admin/module/list', function(res) {
+                    var parentOpts = '<option value="0">顶级模块</option>';
+                    if (res.parents) {
+                        res.parents.forEach(function(p) {
+                            parentOpts += '<option value="'+p.id+'">'+p.name+'</option>';
+                        });
+                    }
+                    var html = '<form class="layui-form" id="modForm" lay-filter="modForm" style="padding:20px;">' +
+                        '<input type="hidden" name="id" value="'+(data ? data.id : '')+'">' +
+                        '<div class="layui-form-item"><label class="layui-form-label">名称</label><div class="layui-input-block"><input type="text" name="name" class="layui-input"></div></div>' +
+                        '<div class="layui-form-item"><label class="layui-form-label">图标</label><div class="layui-input-block"><input type="text" name="icon" placeholder="layui-icon-xxx" class="layui-input"></div></div>' +
+                        '<div class="layui-form-item"><label class="layui-form-label">URL</label><div class="layui-input-block"><input type="text" name="url" class="layui-input"></div></div>' +
+                        '<div class="layui-form-item"><label class="layui-form-label">父模块</label><div class="layui-input-block"><select name="parent_id">'+parentOpts+'</select></div></div>' +
+                        '<div class="layui-form-item"><label class="layui-form-label">排序</label><div class="layui-input-block"><input type="number" name="sort_order" class="layui-input"></div></div>' +
+                        (isEdit ? '<div class="layui-form-item"><label class="layui-form-label">状态</label><div class="layui-input-block"><input type="radio" name="status" value="1" title="启用"><input type="radio" name="status" value="0" title="禁用"></div></div>' : '') +
+                        '<div class="layui-form-item" style="display:none;"><button class="layui-btn" lay-submit lay-filter="modSubmit" id="realModSubmit">提交</button></div></form>';
+
+                    layer.open({
+                        type: 1, title: title, area: ['500px', '480px'], content: html,
+                        btn: ['确定','取消'],
+                        success: function(layero) {
+                            form.render();
+                            if (isEdit) {
+                                form.val('modForm', data);
+                            }
+                            form.on('submit(modSubmit)', function(fd) {
+                                var url = isEdit ? '/admin/module/update' : '/admin/module/add';
+                                $.post(url, fd.field, function(r) {
+                                    layer.msg(r.msg, {icon: r.code === 0 ? 1 : 2});
+                                    if (r.code === 0) { layer.close(layer.index); table.reload('moduleTable'); }
+                                }, 'json');
+                                return false;
+                            });
+                        },
+                        yes: function(idx, layero) { $(layero).find('#realModSubmit').click(); }
+                    });
+                }, 'json');
+            }
+
+            $('#btnAdd').on('click', function() { openForm('新增模块'); });
+            table.on('tool(moduleTable)', function(obj) {
+                if (obj.event === 'edit') openForm('编辑模块', obj.data);
+                else if (obj.event === 'delete') {
+                    layer.confirm('确定删除该模块吗？', {icon: 2}, function(idx) {
+                        $.post('/admin/module/delete', {id: obj.data.id}, function(r) {
+                            layer.msg(r.msg, {icon: r.code === 0 ? 1 : 2});
+                            if (r.code === 0) table.reload('moduleTable');
+                        }, 'json');
+                        layer.close(idx);
+                    });
+                }
+            });
+        });
+    </script>
+</body>
+</html>

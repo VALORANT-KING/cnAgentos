@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>用户管理</title>
+    <link rel="stylesheet" href="/static/dist/layui-v2.13.6/layui/css/layui.css">
+    <link rel="stylesheet" href="/static/dist/fontawesome-free-5.15.4-web/css/all.min.css">
+    <style>
+        body { padding: 0; margin: 0; background: #f2f2f2; }
+        .page-header { background: #fff; padding: 12px 20px; border-bottom: 1px solid #f0f0f0; display: flex; justify-content: space-between; align-items: center; }
+        .page-header h2 { font-size: 16px; color: #333; margin: 0; font-weight: 500; }
+        .page-content { padding: 15px; }
+        .table-card { background: #fff; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.06); }
+        .toolbar { padding: 15px 20px 10px; }
+    </style>
+</head>
+<body>
+    <div class="page-header">
+        <h2><i class="layui-icon layui-icon-username" style="margin-right:8px;"></i>用户管理</h2>
+    </div>
+
+    <div class="page-content">
+        <div class="table-card">
+            <div class="toolbar">
+                <button class="layui-btn layui-btn-sm" id="btnAdd">
+                    <i class="layui-icon layui-icon-addition"></i> 新增用户
+                </button>
+                <button class="layui-btn layui-btn-sm layui-btn-danger" id="btnBatchDelete" style="display:none;">
+                    <i class="layui-icon layui-icon-delete"></i> 批量删除
+                </button>
+            </div>
+            <table id="userTable" lay-filter="userTable"></table>
+        </div>
+    </div>
+
+    <!-- 新增/编辑用户表单模板 -->
+    <div id="userFormBox" style="display: none; padding: 20px;">
+        <form class="layui-form" id="userForm" lay-filter="userForm">
+            <input type="hidden" name="id">
+            <div class="layui-form-item">
+                <label class="layui-form-label">用户名</label>
+                <div class="layui-input-block">
+                    <input type="text" name="username" required lay-verify="required" placeholder="请输入用户名" class="layui-input">
+                </div>
+            </div>
+            <div class="layui-form-item">
+                <label class="layui-form-label">密码</label>
+                <div class="layui-input-block">
+                    <input type="password" name="password" id="passInput" placeholder="请输入密码" class="layui-input">
+                    <div class="layui-word-aux" id="passTip" style="font-size: 12px; margin-top: 5px;">不修改则留空，新增必填</div>
+                </div>
+            </div>
+            <div class="layui-form-item" id="roleFormItem">
+                <label class="layui-form-label">角色</label>
+                <div class="layui-input-block">
+                    <select name="role" id="roleSelect">
+                        <option value="admin">管理员</option>
+                        <option value="user">普通用户</option>
+                    </select>
+                </div>
+            </div>
+            <div class="layui-form-item" id="statusFormItem">
+                <label class="layui-form-label">状态</label>
+                <div class="layui-input-block">
+                    <input type="radio" name="status" value="1" title="正常" checked>
+                    <input type="radio" name="status" value="0" title="禁用">
+                </div>
+            </div>
+            <div class="layui-form-item" style="display: none;">
+                <button class="layui-btn" lay-submit lay-filter="userSubmit" id="realSubmit">提交</button>
+            </div>
+        </form>
+    </div>
+
+    <script src="/static/dist/layui-v2.13.6/layui/layui.js"></script>
+    <script>
+        layui.use(['table', 'layer', 'form', 'jquery'], function(){
+            var table = layui.table, layer = layui.layer, form = layui.form, $ = layui.jquery;
+
+            function getCookie(n) { var r = document.cookie.match("\\b" + n + "=([^;]*)\\b"); return r ? r[1] : undefined; }
+            $.ajaxSetup({ beforeSend: function(xhr, s) { if (s.type === 'POST') { var x = getCookie("_xsrf"); if (x) xhr.setRequestHeader("X-XSRFToken", x); } } });
+
+            // 渲染表格
+            table.render({
+                elem: '#userTable',
+                url: '/admin/user/list',
+                page: true,
+                limit: 20,
+                cols: [[
+                    {type: 'checkbox', fixed: 'left'},
+                    {field: 'id', title: 'ID', width: 70, sort: true},
+                    {field: 'username', title: '用户名', minWidth: 120},
+                    {field: 'role', title: '角色', width: 110, templet: function(d){
+                        if (d.id === 1 && d.username === 'admin') return '<span class="layui-badge layui-bg-blue">超级管理员</span>';
+                        return d.role === 'admin' ? '<span class="layui-badge layui-bg-blue">管理员</span>' : '<span class="layui-badge layui-bg-green">普通用户</span>';
+                    }},
+                    {field: 'status', title: '状态', width: 90, templet: function(d){
+                        return d.status == 1 ? '<span class="layui-badge layui-bg-green">正常</span>' : '<span class="layui-badge layui-bg-gray">禁用</span>';
+                    }},
+                    {field: 'create_at', title: '创建时间', width: 170},
+                    {title: '操作', width: 150, fixed: 'right', templet: function(d){
+                        if (d.id === 1 && d.username === 'admin') {
+                            return '<a class="layui-btn layui-btn-xs layui-btn-normal" lay-event="edit">改密</a>' +
+                                   '<span class="layui-badge layui-bg-cyan" style="margin-left:6px;">受保护</span>';
+                        }
+                        return '<a class="layui-btn layui-btn-xs" lay-event="edit">编辑</a>' +
+                               '<a class="layui-btn layui-btn-danger layui-btn-xs" lay-event="delete">删除</a>';
+                    }}
+                ]],
+                done: function() { $('#btnBatchDelete').hide(); }
+            });
+
+            // 监听多选
+            table.on('checkbox(userTable)', function(){
+                var checkStatus = table.checkStatus('userTable');
+                if(checkStatus.data.length > 0) $('#btnBatchDelete').show();
+                else $('#btnBatchDelete').hide();
+            });
+
+            // 统一打开表单函数
+            function openUserForm(title, data) {
+                var isEdit = !!data;
+                var isAdminUser = data && data.id === 1 && data.username === 'admin';
+                var content = $('#userFormBox').html();
+
+                layer.open({
+                    type: 1, title: title, area: ['500px', isAdminUser ? '320px' : '450px'],
+                    content: content, btn: ['确定', '取消'],
+                    success: function(layero, index) {
+                        form.render();
+
+                        if (isAdminUser) {
+                            // 超级管理员：只能改密码，隐藏角色和状态
+                            $(layero).find('input[name="username"]').val('admin').addClass('layui-disabled').attr('disabled', true);
+                            $(layero).find('#roleFormItem').hide();
+                            $(layero).find('#statusFormItem').hide();
+                            $(layero).find('#passTip').text('修改管理员密码（至少6位）');
+                            $(layero).find('#passInput').attr('placeholder', '请输入新密码');
+                        } else if (isEdit) {
+                            form.val('userForm', data);
+                            $(layero).find('input[name="username"]').addClass('layui-disabled').attr('disabled', true);
+                            $(layero).find('#passTip').text('不修改则留空，至少6位');
+                        } else {
+                            $(layero).find('#passInput').attr('lay-verify', 'required');
+                        }
+
+                        form.on('submit(userSubmit)', function(formData) {
+                            var url = isEdit ? '/admin/user/update' : '/admin/user/add';
+                            if (isAdminUser) {
+                                formData.field.role = 'admin';
+                                formData.field.status = '1';
+                            }
+                            $.post(url, formData.field, function(res) {
+                                layer.msg(res.msg, {icon: res.code === 0 ? 1 : 2});
+                                if (res.code === 0) { layer.close(layer.index); table.reload('userTable'); }
+                            }, 'json');
+                            return false;
+                        });
+                    },
+                    yes: function(idx, layero) { $(layero).find('#realSubmit').click(); }
+                });
+            }
+
+            $('#btnAdd').on('click', function() { openUserForm('新增用户'); });
+
+            // 批量删除
+            $('#btnBatchDelete').on('click', function() {
+                var ids = table.checkStatus('userTable').data.map(function(i){ return i.id; }).join(',');
+                layer.confirm('确定要删除选中的用户吗？', {icon: 2}, function(index) {
+                    $.post('/admin/user/delete', {ids: ids}, function(res) {
+                        layer.msg(res.msg, {icon: res.code === 0 ? 1 : 2});
+                        if (res.code === 0) { table.reload('userTable'); $('#btnBatchDelete').hide(); }
+                    }, 'json');
+                    layer.close(index);
+                });
+            });
+
+            // 行工具栏
+            table.on('tool(userTable)', function(obj){
+                if (obj.event === 'edit') openUserForm(obj.data.id === 1 && obj.data.username === 'admin' ? '修改管理员密码' : '编辑用户', obj.data);
+                else if (obj.event === 'delete') {
+                    layer.confirm('确定删除用户 "' + obj.data.username + '" 吗？', {icon: 2}, function(index){
+                        $.post('/admin/user/delete', {ids: obj.data.id}, function(res){
+                            layer.msg(res.msg, {icon: res.code === 0 ? 1 : 2});
+                            if (res.code === 0) table.reload('userTable');
+                        }, 'json');
+                        layer.close(index);
+                    });
+                }
+            });
+        });
+    </script>
+</body>
+</html>

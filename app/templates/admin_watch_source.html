@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>瞭望源管理</title>
+    <link rel="stylesheet" href="/static/dist/layui-v2.13.6/layui/css/layui.css">
+</head>
+<body class="layui-layout-body" style="padding: 15px;">
+    <div class="layui-card">
+        <div class="layui-card-header">瞭望源管理</div>
+        <div class="layui-card-body">
+            <button class="layui-btn" id="btnAdd">新增采集源</button>
+            <table id="sourceTable" lay-filter="sourceTable"></table>
+        </div>
+    </div>
+
+    <script src="/static/dist/layui-v2.13.6/layui/layui.js"></script>
+    <script>
+        layui.use(['table', 'form', 'layer', 'jquery'], function(){
+            var table = layui.table, form = layui.form, layer = layui.layer, $ = layui.jquery;
+
+            function getCookie(name) {
+                var r = document.cookie.match("\\b" + name + "=([^;]*)\\b");
+                return r ? r[1] : undefined;
+            }
+
+            $.ajaxSetup({
+                beforeSend: function(xhr, settings) {
+                    if (settings.type === 'POST') {
+                        xhr.setRequestHeader("X-XSRFToken", getCookie("_xsrf"));
+                    }
+                }
+            });
+
+            table.render({
+                elem: '#sourceTable',
+                url: '/admin/watch/source/list',
+                cols: [[
+                    {field: 'id', title: 'ID', width: 80},
+                    {field: 'name', title: '名称', width: 150},
+                    {field: 'url_pattern', title: 'URL模板'},
+                    {field: 'status', title: '状态', width: 100, templet: function(d){
+                        return d.status === 1 ? '<span class="layui-badge layui-bg-green">启用</span>' : '<span class="layui-badge layui-bg-gray">禁用</span>';
+                    }},
+                    {field: 'create_at', title: '创建时间', width: 180},
+                    {title: '操作', width: 150, templet: function(d){
+                        return '<a class="layui-btn layui-btn-xs" lay-event="edit">编辑</a>' +
+                               '<a class="layui-btn layui-btn-danger layui-btn-xs" lay-event="del">删除</a>';
+                    }}
+                ]]
+            });
+
+            $('#btnAdd').click(function(){
+                openSourceForm('新增采集源', {});
+            });
+
+            table.on('tool(sourceTable)', function(obj){
+                if(obj.event === 'edit'){
+                    openSourceForm('编辑采集源', obj.data);
+                } else if(obj.event === 'del'){
+                    layer.confirm('确定删除该采集源吗？', function(index){
+                        $.post('/admin/watch/source/delete', {id: obj.data.id}, function(res){
+                            if(res.code === 0){
+                                layer.msg('删除成功');
+                                table.reload('sourceTable');
+                            } else {
+                                layer.msg(res.msg);
+                            }
+                        });
+                        layer.close(index);
+                    });
+                }
+            });
+
+            function openSourceForm(title, data){
+                layer.open({
+                    type: 1,
+                    title: title,
+                    area: ['600px', '500px'],
+                    content: `
+                        <form class="layui-form" style="padding: 20px;">
+                            <input type="hidden" name="id" value="${data.id || ''}">
+                            <div class="layui-form-item">
+                                <label class="layui-form-label">名称</label>
+                                <div class="layui-input-block">
+                                    <input type="text" name="name" required lay-verify="required" placeholder="请输入名称" class="layui-input" value="${data.name || ''}">
+                                </div>
+                            </div>
+                            <div class="layui-form-item">
+                                <label class="layui-form-label">URL模板</label>
+                                <div class="layui-input-block">
+                                    <textarea name="url_pattern" required lay-verify="required" placeholder="使用{关键词}和{分页}占位" class="layui-textarea">${data.url_pattern || ''}</textarea>
+                                </div>
+                            </div>
+                            <div class="layui-form-item">
+                                <label class="layui-form-label">Headers(JSON)</label>
+                                <div class="layui-input-block">
+                                    <textarea name="headers" placeholder='{"User-Agent": "..."}' class="layui-textarea" style="height: 150px;">${data.headers || '{}'}</textarea>
+                                </div>
+                            </div>
+                            <div class="layui-form-item">
+                                <label class="layui-form-label">状态</label>
+                                <div class="layui-input-block">
+                                    <input type="radio" name="status" value="1" title="启用" ${data.status !== 0 ? 'checked' : ''}>
+                                    <input type="radio" name="status" value="0" title="禁用" ${data.status === 0 ? 'checked' : ''}>
+                                </div>
+                            </div>
+                            <div class="layui-form-item">
+                                <div class="layui-input-block">
+                                    <button class="layui-btn" lay-submit lay-filter="sourceSubmit">立即提交</button>
+                                </div>
+                            </div>
+                        </form>
+                    `,
+                    success: function(layero, index){
+                        form.render();
+                        form.on('submit(sourceSubmit)', function(formData){
+                            var url = formData.field.id ? '/admin/watch/source/update' : '/admin/watch/source/add';
+                            $.post(url, formData.field, function(res){
+                                if(res.code === 0){
+                                    layer.msg(res.msg);
+                                    layer.close(index);
+                                    table.reload('sourceTable');
+                                } else {
+                                    layer.msg(res.msg);
+                                }
+                            });
+                            return false;
+                        });
+                    }
+                });
+            }
+        });
+    </script>
+</body>
+</html>

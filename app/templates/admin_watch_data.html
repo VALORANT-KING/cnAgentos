@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>数据仓库</title>
+    <link rel="stylesheet" href="/static/dist/layui-v2.13.6/layui/css/layui.css">
+    <style>
+        .layui-table-cell {
+            height: auto;
+            line-height: 20px;
+            padding: 10px 15px;
+            white-space: normal;
+            word-break: break-all;
+        }
+    </style>
+</head>
+<body class="layui-layout-body" style="padding: 15px;">
+    <div class="layui-card">
+        <div class="layui-card-header">数据仓库</div>
+        <div class="layui-card-body">
+            <div class="layui-form layui-row layui-col-space10" style="margin-bottom: 10px;">
+                <div class="layui-col-md3">
+                    <input type="text" id="keyword" placeholder="搜索标题或关键词" class="layui-input">
+                </div>
+                <div class="layui-col-md3">
+                    <button class="layui-btn" id="btnSearch">搜索</button>
+                    <button class="layui-btn layui-btn-danger" id="btnBatchDel">批量删除</button>
+                </div>
+            </div>
+            <table id="dataTable" lay-filter="dataTable"></table>
+        </div>
+    </div>
+
+    <script src="/static/dist/layui-v2.13.6/layui/layui.js"></script>
+    <script>
+        layui.use(['table', 'layer', 'jquery', 'form'], function(){
+            var table = layui.table, layer = layui.layer, $ = layui.jquery, form = layui.form;
+
+            function getCookie(name) {
+                var r = document.cookie.match("\\b" + name + "=([^;]*)\\b");
+                return r ? r[1] : undefined;
+            }
+
+            $.ajaxSetup({
+                beforeSend: function(xhr, settings) {
+                    if (settings.type === 'POST') {
+                        xhr.setRequestHeader("X-XSRFToken", getCookie("_xsrf"));
+                    }
+                }
+            });
+
+            var tableIns = table.render({
+                elem: '#dataTable',
+                url: '/admin/watch/data/list',
+                page: true,
+                limit: 20,
+                cols: [[
+                    {type: 'checkbox', fixed: 'left'},
+                    {field: 'id', title: 'ID', width: 80},
+                    {field: 'source_name', title: '来源', width: 120},
+                    {field: 'keyword', title: '关键词', width: 120},
+                    {field: 'title', title: '标题', templet: function(d){
+                        return '<a href="'+d.url+'" target="_blank" style="color: #01AAED;">'+d.title+'</a>';
+                    }},
+                    {field: 'publish_time', title: '发布时间', width: 120},
+                    {field: 'create_at', title: '采集时间', width: 180},
+                    {title: '操作', width: 80, fixed: 'right', templet: function(d){
+                        return '<a class="layui-btn layui-btn-danger layui-btn-xs" lay-event="del">删除</a>';
+                    }}
+                ]]
+            });
+
+            $('#btnSearch').click(function(){
+                tableIns.reload({
+                    where: { keyword: $('#keyword').val() },
+                    page: { curr: 1 }
+                });
+            });
+
+            $('#btnBatchDel').click(function(){
+                var checkStatus = table.checkStatus('dataTable');
+                var data = checkStatus.data;
+                if(data.length === 0){
+                    layer.msg('请选择要删除的数据');
+                    return;
+                }
+                var ids = data.map(function(item){ return item.id; }).join(',');
+                layer.confirm('确定批量删除这 '+data.length+' 条数据吗？', function(index){
+                    $.post('/admin/watch/data/delete', {ids: ids}, function(res){
+                        if(res.code === 0){
+                            layer.msg('删除成功');
+                            tableIns.reload();
+                        } else {
+                            layer.msg(res.msg);
+                        }
+                    });
+                    layer.close(index);
+                });
+            });
+
+            table.on('tool(dataTable)', function(obj){
+                if(obj.event === 'del'){
+                    layer.confirm('确定删除该数据吗？', function(index){
+                        $.post('/admin/watch/data/delete', {ids: obj.data.id}, function(res){
+                            if(res.code === 0){
+                                layer.msg('删除成功');
+                                tableIns.reload();
+                            } else {
+                                layer.msg(res.msg);
+                            }
+                        });
+                        layer.close(index);
+                    });
+                }
+            });
+        });
+    </script>
+</body>
+</html>

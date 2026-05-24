@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>权限管理</title>
+    <link rel="stylesheet" href="/static/dist/layui-v2.13.6/layui/css/layui.css">
+    <style>
+        body { padding: 0; margin: 0; background: #f2f2f2; }
+        .page-header { background: #fff; padding: 12px 20px; border-bottom: 1px solid #f0f0f0; }
+        .page-header h2 { font-size: 16px; color: #333; margin: 0; font-weight: 500; }
+        .page-content { padding: 15px; }
+        .perm-layout { display: flex; gap: 15px; height: calc(100vh - 130px); }
+        .perm-left { width: 250px; flex-shrink: 0; }
+        .perm-right { flex: 1; }
+        .card { background: #fff; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.06); padding: 15px; height: 100%; overflow: auto; }
+        .card-title { font-size: 14px; font-weight: 500; color: #333; margin-bottom: 12px; padding-bottom: 8px; border-bottom: 1px solid #f0f0f0; }
+        .tree-card { background: #fff; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.06); padding: 20px; }
+    </style>
+</head>
+<body>
+    <div class="page-header">
+        <h2><i class="layui-icon layui-icon-vercode" style="margin-right:8px;"></i>权限管理</h2>
+    </div>
+    <div class="page-content">
+        <div class="perm-layout">
+            <div class="perm-left">
+                <div class="card">
+                    <div class="card-title">角色列表</div>
+                    <div id="roleList" style="padding: 0 5px;"></div>
+                </div>
+            </div>
+            <div class="perm-right">
+                <div class="card">
+                    <div class="card-title">功能权限配置</div>
+                    <div id="permTree" class="tree-card">
+                        <p style="text-align:center;color:#999;">请先选择左侧角色</p>
+                    </div>
+                    <div style="margin-top:15px;text-align:center;display:none;" id="saveBar">
+                        <button class="layui-btn layui-btn-sm" id="btnSave">保存权限</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="/static/dist/layui-v2.13.6/layui/layui.js"></script>
+    <script>
+        layui.use(['tree', 'jquery', 'layer'], function(){
+            var tree = layui.tree, $ = layui.jquery, layer = layui.layer;
+            function getCookie(n) { var r = document.cookie.match("\\b" + n + "=([^;]*)\\b"); return r ? r[1] : undefined; }
+            $.ajaxSetup({ beforeSend: function(xhr, s) { if (s.type === 'POST') { var x = getCookie("_xsrf"); if (x) xhr.setRequestHeader("X-XSRFToken", x); } } });
+
+            var currentRoleId = 0;
+
+            // 加载角色列表
+            $.get('/admin/role/select', function(res) {
+                var html = '';
+                res.data.forEach(function(r) {
+                    html += '<div class="layui-card role-item" data-id="'+r.id+'" style="margin-bottom:6px;cursor:pointer;padding:10px 12px;border-radius:6px;border:1px solid #f0f0f0;transition:all 0.2s;">' +
+                        '<i class="layui-icon layui-icon-user" style="margin-right:6px;"></i>'+r.name+'</div>';
+                });
+                $('#roleList').html(html);
+
+                $('.role-item').on('click', function() {
+                    $('.role-item').css({'background':'','border-color':'#f0f0f0','color':''});
+                    $(this).css({'background':'#1e9fff','border-color':'#1e9fff','color':'#fff'});
+                    currentRoleId = $(this).data('id');
+                    loadPermissions(currentRoleId);
+                });
+            }, 'json');
+
+            // 加载权限树
+            function loadPermissions(roleId) {
+                $.get('/admin/permission/load?role_id=' + roleId, function(res) {
+                    var treeData = buildTree(res.data);
+                    tree.render({
+                        elem: '#permTree',
+                        data: treeData,
+                        showCheckbox: true,
+                        id: 'permTreeView',
+                        oncheck: function() { $('#saveBar').show(); }
+                    });
+                    $('#saveBar').show();
+                }, 'json');
+            }
+
+            function buildTree(data) {
+                var result = [];
+                data.forEach(function(p) {
+                    var node = { id: p.id, title: p.name, spread: true, checked: p.checked };
+                    if (p.children && p.children.length > 0) {
+                        node.children = p.children.map(function(c) {
+                            return { id: c.id, title: c.name, checked: c.checked };
+                        });
+                    }
+                    result.push(node);
+                });
+                return result;
+            }
+
+            // 保存权限
+            $('#btnSave').on('click', function() {
+                if (!currentRoleId) { layer.msg('请先选择角色', {icon: 0}); return; }
+                var checkedData = tree.getChecked('permTreeView');
+                var ids = [];
+                function collect(nodes) {
+                    nodes.forEach(function(n) {
+                        ids.push(n.id);
+                        if (n.children) collect(n.children);
+                    });
+                }
+                collect(checkedData);
+                $.post('/admin/permission/save', {role_id: currentRoleId, module_ids: ids.join(',')}, function(r) {
+                    layer.msg(r.msg, {icon: r.code === 0 ? 1 : 2});
+                }, 'json');
+            });
+        });
+    </script>
+</body>
+</html>

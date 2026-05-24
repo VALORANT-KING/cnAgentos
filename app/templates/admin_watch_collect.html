@@ -1,0 +1,344 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>瞭望采集 - AI 智能数据采集</title>
+    <link rel="stylesheet" href="/static/dist/fontawesome-free-5.15.4-web/css/all.min.css">
+    <style>
+        :root {
+            --primary: #4a90e2;
+            --bg: #0f172a;
+            --card-bg: #1e293b;
+            --text: #f8fafc;
+            --text-dim: #94a3b8;
+            --accent: #38bdf8;
+            --glass: rgba(255, 255, 255, 0.05);
+        }
+
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: 'Inter', -apple-system, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            overflow-x: hidden;
+        }
+
+        /* 背景动画 */
+        .bg-glow {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: radial-gradient(circle at 50% 50%, #1e293b 0%, #0f172a 100%);
+            z-index: -1;
+        }
+
+        .container {
+            width: 100%;
+            max-width: 800px;
+            padding: 20px;
+            text-align: center;
+            animation: fadeIn 0.8s ease-out;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        h1 {
+            font-size: 3rem;
+            font-weight: 800;
+            margin-bottom: 2rem;
+            background: linear-gradient(to right, #38bdf8, #818cf8);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            letter-spacing: -1px;
+        }
+
+        .search-box {
+            position: relative;
+            background: var(--glass);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(12px);
+            border-radius: 24px;
+            padding: 8px;
+            display: flex;
+            align-items: center;
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .search-box:focus-within {
+            border-color: var(--accent);
+            box-shadow: 0 0 0 4px rgba(56, 189, 248, 0.2);
+            transform: scale(1.01);
+        }
+
+        .search-box input {
+            flex: 1;
+            background: transparent;
+            border: none;
+            color: white;
+            font-size: 1.25rem;
+            padding: 12px 20px;
+            outline: none;
+        }
+
+        .search-btn {
+            background: var(--accent);
+            color: var(--bg);
+            border: none;
+            border-radius: 16px;
+            padding: 12px 28px;
+            font-weight: 700;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .search-btn:hover {
+            opacity: 0.9;
+            transform: translateY(-1px);
+        }
+
+        .search-btn:active {
+            transform: translateY(0);
+        }
+
+        .options-panel {
+            margin-top: 2rem;
+            background: var(--glass);
+            border-radius: 20px;
+            padding: 24px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            text-align: left;
+        }
+
+        .option-group {
+            margin-bottom: 1.5rem;
+        }
+
+        .option-label {
+            display: block;
+            font-size: 0.875rem;
+            color: var(--text-dim);
+            margin-bottom: 0.75rem;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            font-weight: 600;
+        }
+
+        .source-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+            gap: 12px;
+        }
+
+        .source-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            background: rgba(255, 255, 255, 0.03);
+            padding: 10px 16px;
+            border-radius: 12px;
+            cursor: pointer;
+            transition: all 0.2s;
+            border: 1px solid transparent;
+            user-select: none;
+        }
+
+        .source-item:hover {
+            background: rgba(255, 255, 255, 0.08);
+        }
+
+        .source-item.active {
+            background: rgba(56, 189, 248, 0.1);
+            border-color: var(--accent);
+            color: var(--accent);
+        }
+
+        .source-item input {
+            display: none;
+        }
+
+        .switch-container {
+            display: flex;
+            align-items: center;
+            gap: 20px;
+        }
+
+        .input-num {
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            color: white;
+            padding: 8px 12px;
+            border-radius: 8px;
+            width: 60px;
+            outline: none;
+        }
+
+        .input-num:focus {
+            border-color: var(--accent);
+        }
+
+        .status-msg {
+            margin-top: 2rem;
+            font-size: 0.875rem;
+            color: var(--accent);
+            min-height: 1.5rem;
+        }
+
+        /* 动画效果：采集时 */
+        .loading-dots:after {
+            content: '.';
+            animation: dots 1.5s steps(5, end) infinite;
+        }
+
+        @keyframes dots {
+            0%, 20% { color: rgba(0,0,0,0); text-shadow: .25em 0 0 rgba(0,0,0,0), .5em 0 0 rgba(0,0,0,0); }
+            40% { color: white; text-shadow: .25em 0 0 rgba(0,0,0,0), .5em 0 0 rgba(0,0,0,0); }
+            60% { text-shadow: .25em 0 0 white, .5em 0 0 rgba(0,0,0,0); }
+            80%, 100% { text-shadow: .25em 0 0 white, .5em 0 0 white; }
+        }
+    </style>
+</head>
+<body>
+    <div class="bg-glow"></div>
+    
+    <div class="container">
+        <h1>瞭望采集</h1>
+        
+        <div class="search-box">
+            <input type="text" id="keyword" placeholder="输入关键词，开始 AI 智能瞭望..." autocomplete="off">
+            <button class="search-btn" id="startBtn">
+                <i class="fas fa-satellite-dish"></i>
+                开始采集
+            </button>
+        </div>
+
+        <div class="options-panel">
+            <div class="option-group">
+                <span class="option-label">选择采集源</span>
+                <div class="source-grid">
+                    {% for source in sources %}
+                    <label class="source-item active">
+                        <input type="checkbox" name="source_ids" value="{{ source['id'] }}" checked>
+                        <i class="fas fa-link"></i>
+                        <span>{{ source['name'] }}</span>
+                    </label>
+                    {% end %}
+                </div>
+            </div>
+
+            <div class="option-group">
+                <span class="option-label">采集参数</span>
+                <div class="switch-container">
+                    <div>
+                        <span style="font-size: 0.875rem; margin-right: 8px;">采集页数:</span>
+                        <input type="number" id="pages" class="input-num" value="1" min="1" max="10">
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="status-msg" id="statusMsg"></div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const startBtn = document.getElementById('startBtn');
+            const keywordInput = document.getElementById('keyword');
+            const statusMsg = document.getElementById('statusMsg');
+            const sourceItems = document.querySelectorAll('.source-item');
+
+            // 切换源选择样式
+            sourceItems.forEach(item => {
+                item.addEventListener('click', (e) => {
+                    const checkbox = item.querySelector('input');
+                    // 因为 label 已经绑定了 checkbox，点击时 checkbox 会自动切换
+                    // 我们只需要更新样式
+                    setTimeout(() => {
+                        if (checkbox.checked) {
+                            item.classList.add('active');
+                        } else {
+                            item.classList.remove('active');
+                        }
+                    }, 10);
+                });
+            });
+
+            function getCookie(name) {
+                var r = document.cookie.match("\\b" + name + "=([^;]*)\\b");
+                return r ? r[1] : undefined;
+            }
+
+            startBtn.addEventListener('click', async () => {
+                const keyword = keywordInput.value.trim();
+                const pages = document.getElementById('pages').value;
+                const sourceIds = Array.from(document.querySelectorAll('input[name="source_ids"]:checked'))
+                                      .map(cb => cb.value);
+
+                if (!keyword) {
+                    statusMsg.innerText = '请输入关键词';
+                    return;
+                }
+                if (sourceIds.length === 0) {
+                    statusMsg.innerText = '请至少选择一个采集源';
+                    return;
+                }
+
+                startBtn.disabled = true;
+                startBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> 正在采集';
+                statusMsg.innerHTML = '<span class="loading-dots">AI 正在深度分析网页内容，请稍候</span>';
+
+                try {
+                    const formData = new URLSearchParams();
+                    formData.append('keyword', keyword);
+                    formData.append('pages', pages);
+                    sourceIds.forEach(id => formData.append('source_ids', id));
+                    formData.append('_xsrf', getCookie('_xsrf'));
+
+                    const response = await fetch('/admin/watch/docollect', {
+                        method: 'POST',
+                        body: formData
+                    });
+
+                    const res = await response.json();
+                    if (res.code === 0) {
+                        statusMsg.innerHTML = `<span style="color: #4ade80"><i class="fas fa-check-circle"></i> ${res.msg}</span>`;
+                        // 3秒后清除成功消息
+                        setTimeout(() => {
+                            if (statusMsg.innerText.includes('采集完成')) {
+                                statusMsg.innerText = '';
+                            }
+                        }, 5000);
+                    } else {
+                        statusMsg.innerHTML = `<span style="color: #f87171"><i class="fas fa-exclamation-triangle"></i> ${res.msg}</span>`;
+                    }
+                } catch (err) {
+                    statusMsg.innerText = '采集出错，请检查网络连接';
+                } finally {
+                    startBtn.disabled = false;
+                    startBtn.innerHTML = '<i class="fas fa-satellite-dish"></i> 开始采集';
+                }
+            });
+
+            // 回车触发
+            keywordInput.addEventListener('keypress', (e) => {
+                if (e.key === 'Enter') startBtn.click();
+            });
+        });
+    </script>
+</body>
+</html>
