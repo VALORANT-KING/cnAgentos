@@ -6,7 +6,7 @@
     <title>智能聊天 - 即时通信</title>
     <link rel="stylesheet" href="{{ static_url('dist/bootstrap-5.3.8-dist/css/bootstrap.min.css') }}">
     <link rel="stylesheet" href="{{ static_url('dist/fontawesome-free-5.15.4-web/css/all.min.css') }}">
-    <link rel="stylesheet" href="{{ static_url('css/im.css') }}?v=20260524e">
+    <link rel="stylesheet" href="{{ static_url('css/im.css') }}?v=20260524g">
 </head>
 <body>
     <div class="im-app">
@@ -51,6 +51,7 @@
                     <a href="/home"><i class="fas fa-home"></i></a>
                 </div>
             </div>
+            <div id="groupStatusBar" class="im-group-status-bar" style="display:none;"></div>
             <div id="groupAnnouncement" class="im-group-announcement" style="display:none;"></div>
             <div class="im-messages" id="messagesBox"></div>
             <div class="im-input-bar">
@@ -130,6 +131,6 @@
         var IM_USERNAME = "{{ username }}";
         var IM_USER_ID = {{ user_id }};
     </script>
-    <script src="{{ static_url('js/im.js') }}?v=20260524e"></script>
+    <script src="{{ static_url('js/im.js') }}?v=20260524g"></script>
 </body>
 </html>

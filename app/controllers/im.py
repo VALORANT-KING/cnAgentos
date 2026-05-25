@@ -447,18 +447,25 @@ class ImGroupJoinHandler(ImBaseHandler):
 class ImGroupMembersHandler(ImBaseHandler):
     @tornado.web.authenticated
     def get(self):
+        user = self._current_user_dict()
+        if not user:
+            return self.write_json(1, "用户不存在")
         group_id = int(self.get_argument("group_id", 0))
         if not group_id:
             return self.write_json(1, "参数错误")
-        group = ImGroupRepository.get_group_detail(group_id)
+        if not ImGroupRepository.is_member(group_id, user["id"]):
+            return self.write_json(1, "非群成员")
+        group = ImGroupRepository.get_by_id_admin(group_id)
         if not group:
-            return self.write_json(1, "群组不存在或已封禁")
+            return self.write_json(1, "群组不存在")
         members = ImGroupRepository.get_members(group_id)
         employees = ImGroupRepository.get_employees(group_id)
+        block_msg = ImGroupRepository.get_block_message(group_id)
         return self.write_json(0, "", {
             "group": group,
             "members": members,
             "employees": employees,
+            "block_message": block_msg or "",
         })
 
 
@@ -701,8 +708,10 @@ class ImWebSocketHandler(tornado.websocket.WebSocketHandler):
                 }, ensure_ascii=False))
                 return
             if not ImGroupRepository.is_active(receiver_id):
+                block_msg = ImGroupRepository.get_block_message(receiver_id)
                 self.write_message(json.dumps({
-                    "type": "error", "msg": "该群已封禁或已解散",
+                    "type": "error",
+                    "msg": block_msg or "该群暂不可用",
                 }, ensure_ascii=False))
                 return
 

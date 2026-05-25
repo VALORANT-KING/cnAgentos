@@ -1,6 +1,12 @@
 from app.models.db import get_connection
 
 
+# 群状态：1=正常  0=封禁（可解封）  2=解散（不可恢复）
+GROUP_STATUS_ACTIVE = 1
+GROUP_STATUS_BANNED = 0
+GROUP_STATUS_DISSOLVED = 2
+
+
 class ImGroupRepository:
     @staticmethod
     def create(name, owner_id, member_ids=None, employee_ids=None):
@@ -29,19 +35,35 @@ class ImGroupRepository:
         return group_id
 
     @staticmethod
-    def is_active(group_id):
+    def get_status(group_id):
         with get_connection() as conn:
             row = conn.execute(
                 "SELECT status FROM im_groups WHERE id = ?",
                 (group_id,),
             ).fetchone()
-            return row is not None and row["status"] == 1
+            return row["status"] if row else None
+
+    @staticmethod
+    def is_active(group_id):
+        return ImGroupRepository.get_status(group_id) == GROUP_STATUS_ACTIVE
+
+    @staticmethod
+    def get_block_message(group_id):
+        status = ImGroupRepository.get_status(group_id)
+        if status == GROUP_STATUS_BANNED:
+            return "该群已被管理员封禁，无法发送消息"
+        if status == GROUP_STATUS_DISSOLVED:
+            return "该群已被管理员解散，无法继续聊天"
+        return None
 
     @staticmethod
     def add_employees(group_id, operator_id, employee_ids):
-        group = ImGroupRepository.get_by_id(group_id)
+        group = ImGroupRepository.get_by_id_admin(group_id)
         if not group:
-            return False, "群组不存在或已封禁"
+            return False, "群组不存在"
+        block = ImGroupRepository.get_block_message(group_id)
+        if block:
+            return False, block
         if not ImGroupRepository.is_member(group_id, operator_id):
             return False, "无权限"
         with get_connection() as conn:
@@ -91,11 +113,11 @@ class ImGroupRepository:
         with get_connection() as conn:
             rows = conn.execute(
                 """
-                SELECT g.id, g.name, g.owner_id, g.announcement, g.create_at,
+                SELECT g.id, g.name, g.owner_id, g.announcement, g.create_at, g.status,
                        m.role AS my_role
                 FROM im_groups g
                 JOIN im_group_members m ON m.group_id = g.id
-                WHERE m.user_id = ? AND g.status = 1
+                WHERE m.user_id = ?
                 ORDER BY g.id DESC
                 """,
                 (user_id,),
@@ -126,9 +148,12 @@ class ImGroupRepository:
 
     @staticmethod
     def add_members(group_id, operator_id, member_ids):
-        group = ImGroupRepository.get_by_id(group_id)
+        group = ImGroupRepository.get_by_id_admin(group_id)
         if not group:
             return False, "群组不存在"
+        block = ImGroupRepository.get_block_message(group_id)
+        if block:
+            return False, block
         if not ImGroupRepository.is_member(group_id, operator_id):
             return False, "无权限"
         with get_connection() as conn:
@@ -206,14 +231,48 @@ class ImGroupRepository:
     @staticmethod
     def dissolve(group_id):
         with get_connection() as conn:
-            conn.execute("UPDATE im_groups SET status = 0 WHERE id = ?", (group_id,))
+            row = conn.execute(
+                "SELECT status FROM im_groups WHERE id = ?",
+                (group_id,),
+            ).fetchone()
+            if not row:
+                return False, "群组不存在"
+            if row["status"] == GROUP_STATUS_DISSOLVED:
+                return False, "群已解散"
+            conn.execute(
+                "UPDATE im_groups SET status = ? WHERE id = ?",
+                (GROUP_STATUS_DISSOLVED, group_id),
+            )
             conn.commit()
+        return True, "群已解散"
 
     @staticmethod
     def set_status(group_id, status):
+        """封禁/解封：仅支持 0↔1，已解散群不可变更"""
+        if status not in (GROUP_STATUS_ACTIVE, GROUP_STATUS_BANNED):
+            return False, "无效状态"
         with get_connection() as conn:
-            conn.execute("UPDATE im_groups SET status = ? WHERE id = ?", (status, group_id))
+            row = conn.execute(
+                "SELECT status FROM im_groups WHERE id = ?",
+                (group_id,),
+            ).fetchone()
+            if not row:
+                return False, "群组不存在"
+            current = row["status"]
+            if current == GROUP_STATUS_DISSOLVED:
+                return False, "该群已解散，无法解封或封禁"
+            if status == GROUP_STATUS_ACTIVE and current == GROUP_STATUS_ACTIVE:
+                return False, "群已是正常状态"
+            if status == GROUP_STATUS_BANNED and current == GROUP_STATUS_BANNED:
+                return False, "群已是封禁状态"
+            conn.execute(
+                "UPDATE im_groups SET status = ? WHERE id = ?",
+                (status, group_id),
+            )
             conn.commit()
+        if status == GROUP_STATUS_BANNED:
+            return True, "群已封禁"
+        return True, "群已解封"
 
     @staticmethod
     def set_announcement(group_id, announcement):

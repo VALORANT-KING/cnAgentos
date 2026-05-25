@@ -15,7 +15,8 @@
         currentServer: null,
         pendingRequests: 0,
         unreadCounts: {},
-        convPreviews: {}
+        convPreviews: {},
+        groupBlocked: ''
     };
 
     var UNREAD_STORAGE_KEY = 'im_unread_' + (typeof IM_USER_ID !== 'undefined' ? IM_USER_ID : '0');
@@ -180,6 +181,64 @@
         return !isMessageForCurrentChat(msg);
     }
 
+    function getGroupStatus(groupId) {
+        var g = state.groups.find(function (x) { return String(x.id) === String(groupId); });
+        return g && g.status !== undefined ? g.status : 1;
+    }
+
+    function groupStatusPreview(status) {
+        if (status === 0) return '[已封禁]';
+        if (status === 2) return '[已解散]';
+        return null;
+    }
+
+    function getListPreview(type, id, groupStatus) {
+        if (type === 'group') {
+            var statusText = groupStatusPreview(groupStatus);
+            if (statusText) return statusText;
+        }
+        var key = convKey(type, id);
+        if (state.convPreviews[key]) return state.convPreviews[key];
+        return type === 'group' ? '群聊' : '私聊';
+    }
+
+    function syncGroupInState(group) {
+        if (!group || group.id === undefined) return;
+        var idx = state.groups.findIndex(function (x) {
+            return String(x.id) === String(group.id);
+        });
+        if (idx >= 0) {
+            state.groups[idx].status = group.status;
+            if (group.name) state.groups[idx].name = group.name;
+            if (group.announcement !== undefined) {
+                state.groups[idx].announcement = group.announcement;
+            }
+        } else {
+            state.groups.push({
+                id: group.id,
+                name: group.name,
+                status: group.status,
+                owner_id: group.owner_id,
+                announcement: group.announcement
+            });
+        }
+    }
+
+    function refreshCurrentGroupStatus() {
+        if (!state.currentChat || state.currentChat.type !== 'group') {
+            return Promise.resolve(false);
+        }
+        var gid = state.currentChat.id;
+        return ajax('GET', apiUrl('/api/im/groups/members?group_id=' + gid)).then(function (res) {
+            if (res.code !== 0) return false;
+            if (res.data.group) syncGroupInState(res.data.group);
+            setGroupChatBlocked(res.data.block_message || '');
+            renderChatList();
+            if (state.currentTab === 'groups') renderGroupList();
+            return !!res.data.block_message;
+        });
+    }
+
     function updateListItemBadge(key) {
         var parts = key.split(':');
         var selector = '.im-list-item[data-type="' + parts[0] + '"][data-id="' + parts[1] + '"]';
@@ -200,8 +259,9 @@
                 }
             }
             var preview = el.querySelector('.preview');
-            if (preview && state.convPreviews[key]) {
-                preview.textContent = state.convPreviews[key];
+            if (preview) {
+                var groupStatus = parts[0] === 'group' ? getGroupStatus(parts[1]) : 1;
+                preview.textContent = getListPreview(parts[0], parts[1], groupStatus);
             }
         });
     }
@@ -222,7 +282,21 @@
             return;
         }
         if (payload.type === 'error' && payload.msg) {
+            if (state.currentChat && state.currentChat.type === 'group') {
+                refreshCurrentGroupStatus().then(function (blocked) {
+                    if (!blocked) alert(payload.msg);
+                });
+                return;
+            }
             alert(payload.msg);
+            return;
+        }
+        if (payload.type === 'group_status') {
+            if (state.currentChat && state.currentChat.type === 'group' &&
+                String(state.currentChat.id) === String(payload.group_id)) {
+                setGroupChatBlocked(payload.message || '');
+            }
+            loadGroups();
             return;
         }
         if (payload.type === 'message' && payload.data) {
@@ -279,6 +353,7 @@
 
     function sendTextMessage() {
         if (!state.currentChat) return alert('请先选择聊天对象');
+        if (state.groupBlocked) return alert(state.groupBlocked);
         var input = document.getElementById('msgInput');
         var content = (input.value || '').trim();
         if (!content && !state.pendingFile) return;
@@ -315,6 +390,7 @@
 
     function sendSticker(emoji) {
         if (!state.currentChat) return;
+        if (state.groupBlocked) return alert(state.groupBlocked);
         sendWsMessage({
             type: 'message',
             receiver_type: state.currentChat.type,
@@ -454,9 +530,42 @@
         if (box) box.scrollTop = box.scrollHeight;
     }
 
+    function setGroupChatBlocked(blockMsg) {
+        state.groupBlocked = blockMsg || '';
+        var bar = document.getElementById('groupStatusBar');
+        var input = document.getElementById('msgInput');
+        var sendBtn = document.getElementById('sendBtn');
+        var filePickBtn = document.getElementById('filePickBtn');
+        if (bar) {
+            if (blockMsg) {
+                bar.textContent = blockMsg;
+                bar.className = 'im-group-status-bar' +
+                    (blockMsg.indexOf('解散') >= 0 ? ' dissolved' : ' banned');
+                bar.style.display = 'block';
+            } else {
+                bar.style.display = 'none';
+                bar.textContent = '';
+                bar.className = 'im-group-status-bar';
+            }
+        }
+        var disabled = !!blockMsg;
+        if (input) {
+            input.disabled = disabled;
+            if (disabled) {
+                input.placeholder = blockMsg;
+                input.value = '';
+            } else if (!state.pendingFile) {
+                input.placeholder = '输入消息，输入 @ 可唤起数字员工…';
+            }
+        }
+        if (sendBtn) sendBtn.disabled = disabled;
+        if (filePickBtn) filePickBtn.disabled = disabled;
+    }
+
     function openChat(type, id, name) {
         hidePanels();
         clearUnread(type, id);
+        setGroupChatBlocked('');
         state.currentChat = { type: type, id: id, name: name, myId: state.myUserId };
         document.getElementById('chatTitle').textContent = name;
         document.getElementById('messagesBox').innerHTML = '';
@@ -478,12 +587,21 @@
 
         if (isGroup) {
             ajax('GET', apiUrl('/api/im/groups/members?group_id=' + id)).then(function (res) {
-                if (res.code === 0 && res.data.group) {
+                if (res.code !== 0) {
+                    if (res.msg) alert(res.msg);
+                    return;
+                }
+                if (res.data.block_message) {
+                    setGroupChatBlocked(res.data.block_message);
+                }
+                if (res.data.group) {
+                    syncGroupInState(res.data.group);
                     state.currentGroupEmployees = res.data.employees || [];
-                    if (res.data.group.announcement) {
+                    if (res.data.group.announcement && !res.data.block_message) {
                         annEl.textContent = '📢 ' + res.data.group.announcement;
                         annEl.style.display = 'block';
                     }
+                    renderChatList();
                 }
             });
         }
@@ -538,7 +656,7 @@
             list.appendChild(createListItem('user', f.friend_id, f.remark || f.username, f.username));
         });
         state.groups.forEach(function (g) {
-            list.appendChild(createListItem('group', g.id, g.name, g.name, true));
+            list.appendChild(createListItem('group', g.id, g.name, g.name, true, g.status));
         });
         if (!list.children.length) {
             list.innerHTML = '<div style="padding:20px;text-align:center;color:#999;font-size:13px;">暂无会话，请从通讯录选择好友或建群</div>';
@@ -552,13 +670,21 @@
         });
     }
 
-    function createListItem(type, id, title, avatarText, isGroup) {
+    function createListItem(type, id, title, avatarText, isGroup, groupStatus) {
         var el = document.createElement('div');
         el.className = 'im-list-item';
         el.dataset.type = type;
         el.dataset.id = String(id);
-        var defaultPreview = type === 'group' ? '群聊' : '私聊';
-        var preview = state.convPreviews[convKey(type, id)] || defaultPreview;
+        if (type === 'group') {
+            var status = groupStatus !== undefined ? groupStatus : getGroupStatus(id);
+            var statusText = groupStatusPreview(status);
+            if (statusText) {
+                el.classList.add('im-list-item-group-inactive');
+                el.classList.add(status === 2 ? 'dissolved' : 'banned');
+            }
+            groupStatus = status;
+        }
+        var preview = getListPreview(type, id, type === 'group' ? groupStatus : 1);
         el.innerHTML =
             '<div class="im-avatar-wrap">' +
             '<div class="im-avatar ' + (isGroup ? 'group' : '') + '">' +
@@ -624,7 +750,7 @@
         var list = document.getElementById('sideList');
         list.innerHTML = '';
         state.groups.forEach(function (g) {
-            list.appendChild(createListItem('group', g.id, g.name, g.name, true));
+            list.appendChild(createListItem('group', g.id, g.name, g.name, true, g.status));
         });
     }
 
@@ -839,6 +965,10 @@
     }
 
     function uploadFile(file) {
+        if (state.groupBlocked) {
+            alert(state.groupBlocked);
+            return Promise.reject(new Error('group blocked'));
+        }
         if (!state.currentChat) {
             alert('请先选择聊天对象再发送文件');
             return Promise.reject(new Error('no chat'));

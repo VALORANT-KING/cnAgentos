@@ -46,20 +46,31 @@
                     {field: 'name', title: '群名称', width: 160},
                     {field: 'owner_name', title: '群主', width: 120},
                     {field: 'member_count', title: '成员数', width: 90},
-                    {field: 'status', title: '状态', width: 90, templet: function(d){
-                        return d.status === 1
-                            ? '<span class="layui-badge layui-bg-green">正常</span>'
-                            : '<span class="layui-badge layui-bg-gray">已封禁/解散</span>';
+                    {field: 'status', title: '状态', width: 100, templet: function(d){
+                        if (d.status === 1) {
+                            return '<span class="layui-badge layui-bg-green">正常</span>';
+                        }
+                        if (d.status === 2) {
+                            return '<span class="layui-badge layui-bg-gray">已解散</span>';
+                        }
+                        return '<span class="layui-badge layui-bg-orange">已封禁</span>';
                     }},
                     {field: 'announcement', title: '公告'},
                     {field: 'create_at', title: '创建时间', width: 170},
-                    {title: '操作', width: 280, templet: function(d){
-                        return '<a class="layui-btn layui-btn-xs" lay-event="members">成员</a>' +
+                    {title: '操作', width: 380, templet: function(d){
+                        var ops = '<a class="layui-btn layui-btn-xs" lay-event="members">成员</a>' +
                                '<a class="layui-btn layui-btn-xs layui-btn-normal" lay-event="announce">公告</a>' +
-                               (d.status === 1
-                                   ? '<a class="layui-btn layui-btn-xs layui-btn-warm" lay-event="ban">封禁</a>'
-                                   : '<a class="layui-btn layui-btn-xs" lay-event="unban">解封</a>') +
-                               '<a class="layui-btn layui-btn-danger layui-btn-xs" lay-event="dissolve">解散</a>';
+                               '<a class="layui-btn layui-btn-xs layui-btn-primary" lay-event="messages">聊天记录</a>';
+                        if (d.status === 1) {
+                            ops += '<a class="layui-btn layui-btn-xs layui-btn-warm" lay-event="ban">封禁</a>' +
+                                   '<a class="layui-btn layui-btn-danger layui-btn-xs" lay-event="dissolve">解散</a>';
+                        } else if (d.status === 0) {
+                            ops += '<a class="layui-btn layui-btn-xs" lay-event="unban">解封</a>' +
+                                   '<a class="layui-btn layui-btn-danger layui-btn-xs" lay-event="dissolve">解散</a>';
+                        } else {
+                            ops += '<span class="layui-badge layui-bg-gray" style="margin-left:6px;">不可恢复</span>';
+                        }
+                        return ops;
                     }}
                 ]]
             });
@@ -90,6 +101,8 @@
                             if (res.code === 0) { table.reload('groupTable'); layer.close(idx); }
                         });
                     });
+                } else if (obj.event === 'messages') {
+                    window.open('/admin/im/messages?group_id=' + d.id, '_blank');
                 } else if (obj.event === 'ban') {
                     layer.confirm('确定封禁该群？', function(idx){
                         $.post('/admin/im/groups/ban', {group_id: d.id, status: 0}, function(res){

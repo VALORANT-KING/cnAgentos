@@ -77,6 +77,9 @@ from app.controllers.admin import AdminImGroupsDissolveHandler
 from app.controllers.admin import AdminImGroupsBanHandler
 from app.controllers.admin import AdminImGroupsMembersHandler
 from app.controllers.admin import AdminImGroupsAnnouncementHandler
+from app.controllers.admin import AdminImMessagesHandler
+from app.controllers.admin import AdminImMessagesListHandler
+from app.controllers.admin import AdminImMessagesHistoryHandler
 from app.controllers.admin import AdminImFilesHandler
 from app.controllers.admin import AdminImFilesListHandler
 from app.controllers.admin import AdminImFilesDeleteHandler
@@ -253,6 +256,9 @@ def make_app():
             (r"/admin/im/groups/ban", AdminImGroupsBanHandler),
             (r"/admin/im/groups/members", AdminImGroupsMembersHandler),
             (r"/admin/im/groups/announcement", AdminImGroupsAnnouncementHandler),
+            (r"/admin/im/messages", AdminImMessagesHandler),
+            (r"/admin/im/messages/list", AdminImMessagesListHandler),
+            (r"/admin/im/messages/history", AdminImMessagesHistoryHandler),
             (r"/admin/im/files", AdminImFilesHandler),
             (r"/admin/im/files/list", AdminImFilesListHandler),
             (r"/admin/im/files/delete", AdminImFilesDeleteHandler),

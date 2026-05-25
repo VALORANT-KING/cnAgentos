@@ -648,6 +648,7 @@ def init_db():
                 parent_id = parent["id"]
             menus = [
                 ("群管理", "/admin/im/groups"),
+                ("聊天记录", "/admin/im/messages"),
                 ("文件管理", "/admin/im/files"),
                 ("服务器管理", "/admin/im/servers"),
                 ("工具管理", "/admin/employee/tools"),

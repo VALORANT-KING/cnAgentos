@@ -912,8 +912,17 @@ class AdminImGroupsDissolveHandler(AdminBaseHandler):
         group_id = int(self.get_body_argument("group_id", 0))
         if not group_id:
             return self.write({"code": 1, "msg": "参数错误"})
-        ImGroupRepository.dissolve(group_id)
-        self.write({"code": 0, "msg": "群已解散"})
+        ok, msg = ImGroupRepository.dissolve(group_id)
+        if ok:
+            from app.controllers.im import broadcast_group
+            block_msg = ImGroupRepository.get_block_message(group_id)
+            broadcast_group(group_id, {
+                "type": "group_status",
+                "group_id": group_id,
+                "status": 2,
+                "message": block_msg or "",
+            })
+        self.write({"code": 0 if ok else 1, "msg": msg})
 
 
 class AdminImGroupsBanHandler(AdminBaseHandler):
@@ -924,9 +933,17 @@ class AdminImGroupsBanHandler(AdminBaseHandler):
         status = int(self.get_body_argument("status", 0))
         if not group_id:
             return self.write({"code": 1, "msg": "参数错误"})
-        ImGroupRepository.set_status(group_id, status)
-        msg = "群已封禁" if status == 0 else "群已解封"
-        self.write({"code": 0, "msg": msg})
+        ok, msg = ImGroupRepository.set_status(group_id, status)
+        if ok:
+            from app.controllers.im import broadcast_group
+            block_msg = ImGroupRepository.get_block_message(group_id) if status == 0 else ""
+            broadcast_group(group_id, {
+                "type": "group_status",
+                "group_id": group_id,
+                "status": status,
+                "message": block_msg or "",
+            })
+        self.write({"code": 0 if ok else 1, "msg": msg})
 
 
 class AdminImGroupsMembersHandler(AdminBaseHandler):
@@ -962,6 +979,79 @@ class AdminImGroupsAnnouncementHandler(AdminBaseHandler):
             sys_msg["sender_name"] = "系统公告"
             broadcast_group(group_id, {"type": "message", "data": sys_msg})
         self.write({"code": 0, "msg": "公告已发布"})
+
+
+class AdminImMessagesHandler(AdminBaseHandler):
+    @tornado.web.authenticated
+    def get(self):
+        self.render("admin_im_messages.html")
+
+
+class AdminImMessagesListHandler(AdminBaseHandler):
+    @tornado.web.authenticated
+    def get(self):
+        from app.models.im_message import ImMessageRepository
+        page = int(self.get_argument("page", 1))
+        limit = int(self.get_argument("limit", 20))
+        receiver_type = self.get_argument("receiver_type", "").strip()
+        keyword = self.get_argument("keyword", "").strip()
+        username = self.get_argument("username", "").strip()
+        group_keyword = self.get_argument("group_keyword", "").strip()
+        user_id = int(self.get_argument("user_id", 0))
+        group_id = int(self.get_argument("group_id", 0))
+        data, total = ImMessageRepository.admin_list(
+            page,
+            limit,
+            receiver_type=receiver_type or None,
+            keyword=keyword or None,
+            username=username or None,
+            group_keyword=group_keyword or None,
+            user_id=user_id,
+            group_id=group_id,
+        )
+        self.write({"code": 0, "msg": "", "count": total, "data": data})
+
+
+class AdminImMessagesHistoryHandler(AdminBaseHandler):
+    @tornado.web.authenticated
+    def get(self):
+        from app.models.im_message import ImMessageRepository
+        receiver_type = self.get_argument("receiver_type", "user").strip()
+        receiver_id = int(self.get_argument("receiver_id", 0))
+        peer_user_id = int(self.get_argument("peer_user_id", 0))
+        before_id = int(self.get_argument("before_id", 0))
+        limit = min(int(self.get_argument("limit", 100)), 200)
+        if not receiver_id:
+            return self.write({"code": 1, "msg": "参数错误"})
+        if receiver_type not in ("user", "group"):
+            return self.write({"code": 1, "msg": "无效的会话类型"})
+        messages = ImMessageRepository.admin_get_history(
+            receiver_type,
+            receiver_id,
+            peer_user_id=peer_user_id,
+            limit=limit,
+            before_id=before_id,
+        )
+        title = ""
+        if receiver_type == "group":
+            from app.models.im_group import ImGroupRepository
+            group = ImGroupRepository.get_by_id_admin(receiver_id)
+            title = group["name"] if group else f"群 #{receiver_id}"
+        else:
+            from app.models.user import UserRepository
+            user = UserRepository.get_user_by_id(receiver_id)
+            if peer_user_id:
+                peer = UserRepository.get_user_by_id(peer_user_id)
+                title = (user["username"] if user else str(receiver_id)) + " ↔ " + (
+                    peer["username"] if peer else str(peer_user_id)
+                )
+            else:
+                title = user["username"] if user else f"用户 #{receiver_id}"
+        self.write({
+            "code": 0,
+            "msg": "",
+            "data": {"title": title, "messages": messages},
+        })
 
 
 class AdminImFilesHandler(AdminBaseHandler):
