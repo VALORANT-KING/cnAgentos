@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>智慧舆情数智大屏</title>
+    <link rel="stylesheet" href="/static/dist/fontawesome-free-5.15.4-web/css/all.min.css">
+    <link rel="stylesheet" href="/static/css/screen.css">
+</head>
+<body>
+    <div class="screen-container">
+        <header class="screen-header">
+            <div class="screen-title">
+                <i class="fas fa-chart-line"></i> 智慧舆情数智大屏
+            </div>
+            <div id="warningMarquee" class="warning-marquee" style="display:none;">
+                <i class="fas fa-exclamation-triangle"></i>
+                <span class="marquee-text">⚠ 检测到高风险违规内容，建议立即审查处理！</span>
+            </div>
+            <div class="header-actions">
+                <div class="time-selector">
+                    <button class="time-btn active" onclick="switchDays(7)">最近7天</button>
+                    <button class="time-btn" onclick="switchDays(30)">最近30天</button>
+                </div>
+                <button class="btn-refresh" onclick="refreshAnalyze()">
+                    <i class="fas fa-sync-alt"></i> 刷新分析
+                </button>
+            </div>
+        </header>
+
+        <div class="screen-body-top">
+            <div class="panel-left">
+                <div class="panel-label">词云分析</div>
+                <div class="chart-box" id="wordcloud">
+                    <div class="loading-overlay"><i class="fas fa-spinner"></i>加载中...</div>
+                </div>
+            </div>
+            <div class="panel-right">
+                <div class="panel-label">3D 舆情热力地球</div>
+                <div class="chart-box" id="earth3d">
+                    <div class="loading-overlay"><i class="fas fa-spinner"></i>加载中...</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="screen-body-bottom">
+            <div class="chart-box-bottom" id="trendChart" style="position:relative;">
+                <div class="chart-toggle-bar">
+                    <button class="btn-chart-toggle" id="chartTypeBtn" onclick="toggleChartType()">
+                        <i class="fas fa-chart-bar"></i> 柱状图
+                    </button>
+                </div>
+            </div>
+            <div class="chart-box-bottom" id="sentimentChart">
+            </div>
+        </div>
+
+        <div class="floating-card" id="analyzeCard">
+            <h4>
+                聊天内容审核
+                <span class="card-refresh" onclick="refreshAnalyze()">
+                    <i class="fas fa-sync-alt"></i> 刷新
+                </span>
+            </h4>
+            <div class="analyze-stats">
+                <div class="stat-row">
+                    <span class="label">违规等级</span>
+                    <span class="risk-badge risk-medium" id="riskLevel">待分析</span>
+                </div>
+                <div class="stat-row">
+                    <span class="label">正常对话</span>
+                    <span class="value" id="normalRate">--</span>
+                </div>
+                <div class="stat-row">
+                    <span class="label">中性内容</span>
+                    <span class="value" id="neutralRate">--</span>
+                </div>
+                <div class="stat-row">
+                    <span class="label">违规内容</span>
+                    <span class="value" id="violationRate">--</span>
+                </div>
+                <div class="emotion-bar-wrap">
+                    <div class="emotion-bar-positive" id="barNormal" style="width:0%"></div>
+                    <div class="emotion-bar-neutral" id="barNeutral" style="width:0%"></div>
+                    <div class="emotion-bar-negative" id="barViolation" style="width:0%"></div>
+                </div>
+                <div class="stat-row">
+                    <span class="label">违规关键词</span>
+                    <span class="value" style="color:#ff6b6b;font-size:12px;" id="topViolationWords">--</span>
+                </div>
+                <div class="stat-row">
+                    <span class="label">热门话题</span>
+                    <span class="value" style="color:#00c6ff;font-size:12px;" id="hotTopics">--</span>
+                </div>
+            </div>
+            <div class="analyze-summary" id="analyzeSummary">点击下方按钮开始分析聊天内容...</div>
+            <div class="analyze-suggestion" id="analyzeSuggestion" style="display:none;"></div>
+            <button class="btn-analyze" id="analyzeBtn" onclick="refreshAnalyze()">
+                <i class="fas fa-sync-alt"></i> 开始分析
+            </button>
+        </div>
+    </div>
+
+    <div class="word-detail-modal" id="wordDetailModal" onclick="if(event.target===this)closeWordDetail()">
+        <div class="word-detail-dialog">
+            <div class="word-detail-header">
+                <h3 id="wordDetailTitle">关键词详情</h3>
+                <button class="word-detail-close" onclick="closeWordDetail()">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div class="word-detail-body" id="wordDetailList"></div>
+        </div>
+    </div>
+
+    <div class="word-detail-modal" id="locationNewsModal" onclick="if(event.target===this)closeLocationNews()">
+        <div class="word-detail-dialog">
+            <div class="word-detail-header">
+                <h3 id="locationNewsTitle">地点新闻</h3>
+                <button class="word-detail-close" onclick="closeLocationNews()">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div class="word-detail-body" id="locationNewsList"></div>
+        </div>
+    </div>
+
+    <script src="/static/dist/echarts/echarts.min.js"></script>
+    <script src="/static/dist/echarts-gl/echarts-gl.min.js"></script>
+    <script src="/static/dist/echarts-wordcloud/echarts-wordcloud.min.js"></script>
+    <script src="/static/js/screen.js"></script>
+</body>
+</html>

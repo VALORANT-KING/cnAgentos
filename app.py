@@ -129,6 +129,13 @@ from app.controllers.im import ImServerListHandler
 from app.controllers.im import ImServerHealthHandler
 from app.controllers.im import ImEmployeeListHandler
 from app.controllers.im import ImEmployeeCallHandler
+from app.controllers.screen import ScreenStatsHandler
+from app.controllers.screen import ScreenWordcloudHandler
+from app.controllers.screen import ScreenEarthDataHandler
+from app.controllers.screen import ScreenAnalyzeHandler
+from app.controllers.screen import ScreenDashboardHandler
+from app.controllers.screen import ScreenWordDetailHandler
+from app.controllers.screen import ScreenLocationNewsHandler
 from app.models.db import init_db
 
 
@@ -306,6 +313,13 @@ def make_app():
             (r"/api/im/servers/list", ImServerListHandler),
             (r"/api/im/health", ImServerHealthHandler),
             (r"/api/im/employee/call", ImEmployeeCallHandler),
+            (r"/api/screen/stats", ScreenStatsHandler),
+            (r"/api/screen/wordcloud", ScreenWordcloudHandler),
+            (r"/api/screen/earth-data", ScreenEarthDataHandler),
+            (r"/api/screen/analyze", ScreenAnalyzeHandler),
+            (r"/api/screen/word-detail", ScreenWordDetailHandler),
+            (r"/api/screen/location-news", ScreenLocationNewsHandler),
+            (r"/screen/dashboard", ScreenDashboardHandler),
         ], **settings)
 
 if __name__ == "__main__":

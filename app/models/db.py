@@ -76,6 +76,18 @@ def init_db():
         )
 
         try:
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_watch_data_create_at ON watch_data(create_at)")
+            conn.commit()
+        except Exception:
+            pass
+
+        try:
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_chat_messages_create_at ON chat_messages(create_at)")
+            conn.commit()
+        except Exception:
+            pass
+
+        try:
             cursor = conn.execute("SELECT id FROM modules LIMIT 1")
             if not cursor.fetchone():
                 conn.execute("INSERT INTO modules(name, icon, url, parent_id, sort_order) VALUES(?,?,?,?,?)", ("系统管理", "layui-icon-home", "", 0, 1))
@@ -162,6 +174,28 @@ def init_db():
         except Exception:
             pass
 
+        try:
+            with get_connection() as conn:
+                conn.execute("UPDATE modules SET url = '/screen/dashboard', icon = 'fa-chart-line' WHERE name = '大屏展示' AND (url = '' OR url IS NULL)")
+                conn.commit()
+        except Exception:
+            pass
+
+        try:
+            with get_connection() as conn:
+                existing = conn.execute("SELECT id FROM modules WHERE name = '大屏展示'").fetchone()
+                if not existing:
+                    parent = conn.execute("SELECT id FROM modules WHERE name = '数智大屏'").fetchone()
+                    if not parent:
+                        conn.execute("INSERT INTO modules(name, icon, url, parent_id, sort_order) VALUES(?,?,?,?,?)", ("数智大屏", "layui-icon-chart-screen", "", 0, 6))
+                        parent_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+                    else:
+                        parent_id = parent["id"]
+                    conn.execute("INSERT INTO modules(name, icon, url, parent_id, sort_order) VALUES(?,?,?,?,?)", ("大屏展示", "fa-chart-line", "/screen/dashboard", parent_id, 1))
+                    conn.commit()
+        except Exception:
+            pass
+
         conn.execute(
             """
             CREATE TABLE IF NOT EXISTS model_engines(
@@ -223,6 +257,45 @@ def init_db():
                     conn.commit()
         except Exception:
             pass
+
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS screen_analysis_result(
+                id integer PRIMARY KEY AUTOINCREMENT,
+                days INTEGER NOT NULL,
+                risk_level TEXT NOT NULL DEFAULT '低',
+                normal_rate REAL DEFAULT 0.0,
+                violation_rate REAL DEFAULT 0.0,
+                neutral_rate REAL DEFAULT 0.0,
+                top_violation_words TEXT DEFAULT '',
+                hot_topics TEXT DEFAULT '',
+                summary TEXT DEFAULT '',
+                suggestion TEXT DEFAULT '',
+                raw_json TEXT DEFAULT '',
+                create_at TEXT NOT NULL DEFAULT(datetime('now'))
+            )
+            """
+        )
+        conn.execute(
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_screen_analysis_days ON screen_analysis_result(days)"
+        )
+
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS screen_analysis_log(
+                id integer PRIMARY KEY AUTOINCREMENT,
+                days INTEGER NOT NULL,
+                risk_level TEXT NOT NULL DEFAULT '低',
+                normal_rate REAL DEFAULT 0.0,
+                violation_rate REAL DEFAULT 0.0,
+                neutral_rate REAL DEFAULT 0.0,
+                elapsed_ms INTEGER DEFAULT 0,
+                is_cached INTEGER DEFAULT 0,
+                error_msg TEXT DEFAULT '',
+                create_at TEXT NOT NULL DEFAULT(datetime('now'))
+            )
+            """
+        )
 
         # 瞭望管理相关表
         conn.execute(
