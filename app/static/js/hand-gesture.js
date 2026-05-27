@@ -27,8 +27,7 @@
         OPEN_PALM: 'open_palm',
         CLOSED_FIST: 'closed_fist',
         POINT_UP: 'point_up',
-        POINT_LEFT: 'point_left',
-        POINT_RIGHT: 'point_right',
+        THREE_FINGERS: 'three_fingers',
         PEACE: 'peace',
         THUMBS_UP: 'thumbs_up',
         THUMBS_DOWN: 'thumbs_down',
@@ -333,28 +332,28 @@
             if (landmarks[6] && landmarks[8]) {
                 var indexPIP = landmarks[6];
                 var indexTip = landmarks[8];
-                fingers.index = (indexPIP.y - indexTip.y) > 0.03;
+                fingers.index = (indexPIP.y - indexTip.y) > 0.02;
             }
             
             // 中指
             if (landmarks[10] && landmarks[12]) {
                 var middlePIP = landmarks[10];
                 var middleTip = landmarks[12];
-                fingers.middle = (middlePIP.y - middleTip.y) > 0.03;
+                fingers.middle = (middlePIP.y - middleTip.y) > 0.02;
             }
             
             // 无名指
             if (landmarks[14] && landmarks[16]) {
                 var ringPIP = landmarks[14];
                 var ringTip = landmarks[16];
-                fingers.ring = (ringPIP.y - ringTip.y) > 0.03;
+                fingers.ring = (ringPIP.y - ringTip.y) > 0.02;
             }
             
             // 小指
             if (landmarks[18] && landmarks[20]) {
                 var pinkyPIP = landmarks[18];
                 var pinkyTip = landmarks[20];
-                fingers.pinky = (pinkyPIP.y - pinkyTip.y) > 0.03;
+                fingers.pinky = (pinkyPIP.y - pinkyTip.y) > 0.02;
             }
         } catch (e) {
             console.warn('Finger state detection error:', e);
@@ -373,15 +372,38 @@
                 return GESTURES.OPEN_PALM;
             }
             
-            // 优先级2：剪刀手 - 只有食指和中指伸直
-            if (!fingers.thumb && fingers.index && fingers.middle && !fingers.ring && !fingers.pinky) {
-                return GESTURES.PEACE;
+            // 优先级2：剪刀手 - 食指和中指伸直，其他弯曲
+            if (fingers.index && fingers.middle && !fingers.ring && !fingers.pinky) {
+                // 验证食指和中指是否分开足够远
+                var indexTip = landmarks[8];
+                var middleTip = landmarks[12];
+                var distance = Math.sqrt(
+                    Math.pow(indexTip.x - middleTip.x, 2) + 
+                    Math.pow(indexTip.y - middleTip.y, 2)
+                );
+                if (distance > 0.05) {
+                    return GESTURES.PEACE;
+                }
             }
             
-            // 优先级3：点赞/向下 - 只有大拇指伸直
+            // 优先级3：食指向上 - 只有食指伸直向上，大拇指和其他手指都弯曲
+            if (!fingers.thumb && fingers.index && !fingers.middle && !fingers.ring && !fingers.pinky) {
+                // 使用食指指尖到食指MCP的方向
+                var angle = getFingerDirection(landmarks[8], landmarks[5]);
+                // 判断是否向上
+                if (angle > -60 && angle < 60) {
+                    return GESTURES.POINT_UP;
+                }
+            }
+            
+            // 优先级4：三指伸直 - 食指、中指、无名指伸直，小指和大拇指弯曲
+            if (fingers.index && fingers.middle && fingers.ring && !fingers.pinky) {
+                return GESTURES.THREE_FINGERS;
+            }
+            
+            // 优先级5：点赞/向下 - 只有大拇指伸直
             if (fingers.thumb && !fingers.index && !fingers.middle && !fingers.ring && !fingers.pinky) {
                 if (landmarks[4] && landmarks[9]) {
-                    // 用大拇指尖和中指MCP的位置关系来判断向上还是向下
                     var thumbTip = landmarks[4];
                     var middleMCP = landmarks[9];
                     
@@ -393,21 +415,8 @@
                 }
             }
             
-            // 优先级4：食指指向上/左/右 - 只有食指伸直
-            if (!fingers.thumb && fingers.index && !fingers.middle && !fingers.ring && !fingers.pinky) {
-                var angle = getFingerDirection(landmarks[8], landmarks[5]); // 指尖到手腕
-                if (angle > -45 && angle < 45) {
-                    return GESTURES.POINT_UP;
-                } else if (angle >= 45 && angle < 135) {
-                    return GESTURES.POINT_RIGHT;
-                } else {
-                    return GESTURES.POINT_LEFT;
-                }
-            }
-            
-            // 优先级5：握拳 - 所有手指都弯曲
+            // 优先级6：握拳 - 所有手指都弯曲
             if (!fingers.thumb && !fingers.index && !fingers.middle && !fingers.ring && !fingers.pinky) {
-                // 额外验证：检查指尖是否接近手掌中心
                 var wrist = landmarks[0];
                 var indexTip = landmarks[8];
                 var middleTip = landmarks[12];
@@ -422,20 +431,8 @@
                     Math.pow(middleTip.y - wrist.y, 2)
                 );
                 
-                // 如果指尖距离手腕很近，确认是握拳
                 if (indexDist < 0.4 && middleDist < 0.4) {
                     return GESTURES.CLOSED_FIST;
-                }
-            }
-            
-            // 补充：食指和大拇指伸直（点赞的另一种形式）
-            if (fingers.thumb && fingers.index && !fingers.middle && !fingers.ring && !fingers.pinky) {
-                if (landmarks[4] && landmarks[6]) {
-                    var thumbTip = landmarks[4];
-                    var indexPIP = landmarks[6];
-                    if (thumbTip.y < indexPIP.y) {
-                        return GESTURES.THUMBS_UP;
-                    }
                 }
             }
             
@@ -447,13 +444,16 @@
     }
 
     /**
-     * 获取手指方向角度
+     * 获取手指方向角度 - 以竖直向上为0度
      */
     function getFingerDirection(tip, base) {
         if (!tip || !base) return 0;
+        // 计算从base指向tip的向量
         var dx = tip.x - base.x;
         var dy = tip.y - base.y;
-        var angle = Math.atan2(dy, dx) * (180 / Math.PI);
+        // 计算相对于竖直向上的角度（Y轴向下为正，所以dy为负表示向上）
+        // 使用 atan2(dx, -dy) 来获得以竖直向上为0度的角度
+        var angle = Math.atan2(dx, -dy) * (180 / Math.PI);
         return angle;
     }
 

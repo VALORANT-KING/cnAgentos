@@ -536,6 +536,67 @@ def init_db():
             conn.commit()
         except Exception:
             pass
+        
+        # 添加更多采集源
+        try:
+            import json
+            default_headers = {
+                "accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
+                "accept-language": "zh-CN,zh;q=0.9,en;q=0.8",
+                "accept-encoding": "gzip, deflate, br",
+                "connection": "keep-alive",
+                "upgrade-insecure-requests": "1",
+                "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36"
+            }
+            
+            extra_sources = [
+                {
+                    "name": "知乎热榜",
+                    "url_pattern": "https://www.zhihu.com/hot"
+                },
+                {
+                    "name": "微博热搜",
+                    "url_pattern": "https://s.weibo.com/top/summary"
+                },
+                {
+                    "name": "今日头条",
+                    "url_pattern": "https://www.toutiao.com/search/?keyword={关键词}&pd=information"
+                },
+                {
+                    "name": "网易新闻",
+                    "url_pattern": "https://www.163.com/search?keyword={关键词}"
+                },
+                {
+                    "name": "腾讯新闻",
+                    "url_pattern": "https://new.qq.com/search?query={关键词}"
+                },
+                {
+                    "name": "澎湃新闻",
+                    "url_pattern": "https://www.thepaper.cn/searchResult.jsp?searchword={关键词}"
+                },
+                {
+                    "name": "36氪",
+                    "url_pattern": "https://36kr.com/search/articles/{关键词}"
+                },
+                {
+                    "name": "虎嗅",
+                    "url_pattern": "https://www.huxiu.com/search.html?q={关键词}"
+                }
+            ]
+            
+            for source in extra_sources:
+                existing = conn.execute(
+                    "SELECT id FROM watch_sources WHERE name = ?", 
+                    (source["name"],)
+                ).fetchone()
+                if not existing:
+                    conn.execute(
+                        "INSERT INTO watch_sources(name, url_pattern, headers) VALUES(?,?,?)",
+                        (source["name"], source["url_pattern"], json.dumps(default_headers))
+                    )
+            conn.commit()
+        except Exception:
+            pass
 
         # 团队任务2：即时通信表
         conn.execute(

@@ -1,6 +1,8 @@
 
 # 自动化任务调度器
 import logging
+import random
+import time
 from datetime import datetime
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.interval import IntervalTrigger
@@ -8,6 +10,16 @@ from app.models.auto_task import AutoTaskRepository
 from app.models.watch import WatchRepository
 import requests
 from bs4 import BeautifulSoup
+
+# User-Agent 列表，用于轮换
+USER_AGENTS = [
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36',
+    'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:121.0) Gecko/20100101 Firefox/121.0',
+    'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.2 Safari/605.1.15',
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36 Edg/120.0.0.0',
+]
 
 # 全局调度器实例
 _scheduler = None
@@ -20,34 +32,60 @@ def get_scheduler():
     return _scheduler
 
 def _parse_baidu_news(soup, keyword, source_id):
-    """解析百度新闻数据"""
+    """解析新闻数据 - 支持多种采集源"""
     news_list = []
     try:
-        items = soup.select("div.result-op")
-        if not items:
-            items = soup.select("div.c-container")
-        for item in items[:10]:
-            title_elem = item.select_one("h3 a, a")
-            if not title_elem:
-                continue
-            title = title_elem.get_text(strip=True)
-            url = title_elem.get("href", "")
-            if not url:
-                continue
-            content_elem = item.select_one("div.c-abstract, p")
-            content = content_elem.get_text(strip=True) if content_elem else ""
-            time_elem = item.select_one("span.c-author, span.c-time")
-            publish_time = time_elem.get_text(strip=True) if time_elem else datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            news_list.append({
-                "source_id": source_id,
-                "keyword": keyword,
-                "title": title,
-                "content": content,
-                "url": url,
-                "publish_time": publish_time
-            })
-    except Exception:
-        pass
+        # 百度新闻解析
+        items = soup.select("div.result-op, div.c-container")
+        if items:
+            for item in items[:10]:
+                title_elem = item.select_one("h3 a, a")
+                if not title_elem:
+                    continue
+                title = title_elem.get_text(strip=True)
+                url = title_elem.get("href", "")
+                if not url or not title:
+                    continue
+                content_elem = item.select_one("div.c-abstract, p")
+                content = content_elem.get_text(strip=True) if content_elem else ""
+                time_elem = item.select_one("span.c-author, span.c-time")
+                publish_time = time_elem.get_text(strip=True) if time_elem else ""
+                news_list.append({
+                    "source_id": source_id,
+                    "keyword": keyword,
+                    "title": title,
+                    "content": content,
+                    "url": url if url.startswith("http") else "https://www.baidu.com" + url,
+                    "publish_time": publish_time
+                })
+        
+        # 如果没找到数据，尝试其他通用解析方式
+        if not news_list:
+            # 通用的文章列表解析
+            items = soup.select("article, div[class*='item'], li[class*='item'], div[class*='news']")
+            for item in items[:10]:
+                title_elem = item.select_one("h1, h2, h3, h4, a[href]")
+                if not title_elem:
+                    continue
+                title = title_elem.get_text(strip=True)
+                url = title_elem.get("href", "") if title_elem.name == "a" else ""
+                if not url and title_elem.select_one("a"):
+                    url = title_elem.select_one("a").get("href", "")
+                if not title or not url:
+                    continue
+                content_elem = item.select_one("p, div[class*='abstract'], div[class*='content']")
+                content = content_elem.get_text(strip=True) if content_elem else ""
+                news_list.append({
+                    "source_id": source_id,
+                    "keyword": keyword,
+                    "title": title,
+                    "content": content,
+                    "url": url if url.startswith("http") else "https://www.baidu.com" + url,
+                    "publish_time": ""
+                })
+                
+    except Exception as e:
+        print(f"解析新闻数据出错: {e}")
     return news_list
 
 def execute_auto_task(task_id):
@@ -76,12 +114,65 @@ def execute_auto_task(task_id):
         try:
             headers = json.loads(headers)
         except:
-            headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
+            headers = {}
+        
+        # 构建完整的反爬虫 headers
+        if not headers.get("User-Agent"):
+            headers["User-Agent"] = random.choice(USER_AGENTS)
+        
+        # 添加常见的浏览器 headers
+        default_headers = {
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
+            "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
+            "Accept-Encoding": "gzip, deflate, br",
+            "Connection": "keep-alive",
+            "Upgrade-Insecure-Requests": "1",
+            "Sec-Fetch-Dest": "document",
+            "Sec-Fetch-Mode": "navigate",
+            "Sec-Fetch-Site": "same-origin",
+            "Sec-Fetch-User": "?1",
+            "Cache-Control": "max-age=0",
+            "Referer": "https://www.baidu.com/",
+        }
+        
+        # 合并 headers（用户自定义的优先级更高）
+        for key, value in default_headers.items():
+            if key not in headers:
+                headers[key] = value
         
         url = url_pattern.replace("{关键词}", task["keyword"]).replace("{分页}", "1")
-        session = requests.Session()
         
-        response = session.get(url, headers=headers, timeout=30)
+        # 添加更长的随机延迟，避免请求过快
+        time.sleep(random.uniform(3, 7))
+        
+        session = requests.Session()
+        # 设置 session 的超时和重试
+        session.mount('http://', requests.adapters.HTTPAdapter(max_retries=2))
+        session.mount('https://', requests.adapters.HTTPAdapter(max_retries=2))
+        
+        # 先访问百度首页，模拟真实用户
+        try:
+            response = session.get("https://www.baidu.com", headers=headers, timeout=30, verify=False)
+            time.sleep(random.uniform(1, 2))
+        except:
+            pass
+        
+        response = session.get(url, headers=headers, timeout=30, verify=False)
+        
+        # 检测是否跳转到验证码页面
+        if "wappass.baidu.com" in response.url or "captcha" in response.text.lower():
+            AutoTaskRepository.add_log(
+                task_id,
+                task["name"],
+                datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                "error",
+                0,
+                "触发百度验证码，请稍后再试或更换采集源"
+            )
+            # 更新任务最后运行时间
+            AutoTaskRepository.update_task_last_run(task_id, datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+            return 0
+        
         response.raise_for_status()
         
         soup = BeautifulSoup(response.text, "html.parser")
@@ -126,13 +217,16 @@ def execute_auto_task(task_id):
         
         return total_saved
     except Exception as e:
+        error_msg = str(e)
+        if "wappass.baidu.com" in error_msg or "验证码" in error_msg:
+            error_msg = "触发百度验证码，请稍后再试或更换采集源"
         AutoTaskRepository.add_log(
             task_id,
             "",
             datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
             "error",
             0,
-            str(e)
+            error_msg
         )
         return 0
 

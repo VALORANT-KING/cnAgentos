@@ -727,6 +727,38 @@
     var gestureRunning = false;
     var gesturePreviewCtx = null;
     var gesturePreviewAnim = null;
+    var gestureLoadCheckTimer = null;
+
+    // 检查手势模块是否已加载
+    function checkGestureModule(callback) {
+        console.log('Checking HandGesture module...');
+        console.log('window.HandGesture:', window.HandGesture);
+        console.log('window.Hands:', typeof Hands !== 'undefined' ? 'loaded' : 'not loaded');
+        
+        if (window.HandGesture) {
+            callback(true);
+            return;
+        }
+        
+        console.log('HandGesture module not found, waiting...');
+        var checkCount = 0;
+        var maxChecks = 100; // 50秒超时（更久的等待）
+        
+        gestureLoadCheckTimer = setInterval(function() {
+            checkCount++;
+            if (window.HandGesture) {
+                console.log('HandGesture loaded after', checkCount * 500, 'ms');
+                clearInterval(gestureLoadCheckTimer);
+                gestureLoadCheckTimer = null;
+                callback(true);
+            } else if (checkCount >= maxChecks) {
+                console.log('HandGesture load timeout');
+                clearInterval(gestureLoadCheckTimer);
+                gestureLoadCheckTimer = null;
+                callback(false);
+            }
+        }, 500); // 检测间隔
+    }
 
     // 启动/停止手势控制
     window.toggleGestureControl = function() {
@@ -740,55 +772,29 @@
 
         if (!gestureRunning) {
             console.log('Starting gesture control');
-            status.textContent = '正在初始化...';
+            status.textContent = '正在加载模块...';
             btn.disabled = true;
             btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> 加载中...';
             
-            if (!window.HandGesture) {
-                console.error('HandGesture not loaded');
-                showToast('手势识别模块加载中，请稍后...');
-                status.textContent = '模块加载中...';
-                btn.disabled = false;
-                btn.innerHTML = '<i class="fas fa-play-circle"></i> 启用';
-                return;
+            // 立即检查一次
+            if (window.HandGesture) {
+                initAndStartGesture(btn, content, status, preview);
+            } else {
+                // 轮询检查
+                checkGestureModule(function(loaded) {
+                    if (!loaded) {
+                        console.error('HandGesture module load timeout');
+                        showToast('模块加载较慢，建议：\n1. 检查网络连接\n2. 使用Chrome/Edge浏览器\n3. 刷新页面重试');
+                        status.textContent = '加载超时';
+                        btn.disabled = false;
+                        btn.innerHTML = '<i class="fas fa-play-circle"></i> 启用';
+                        return;
+                    }
+
+                    console.log('HandGesture module loaded');
+                    initAndStartGesture(btn, content, status, preview);
+                });
             }
-
-            window.HandGesture.init().then(function() {
-                console.log('HandGesture initialized successfully');
-                return window.HandGesture.start();
-            }).then(function() {
-                console.log('HandGesture started successfully');
-                gestureRunning = true;
-                btn.disabled = false;
-                btn.classList.add('active');
-                btn.innerHTML = '<i class="fas fa-stop-circle"></i> 停用';
-                content.style.display = 'block';
-                status.textContent = '摄像头已启动，等待手势...';
-
-                if (preview && window.HandGesture.getCanvas) {
-                    var sourceCanvas = window.HandGesture.getCanvas();
-                    gesturePreviewCtx = preview.getContext('2d');
-                    preview.width = 280;
-                    preview.height = 150;
-                    renderGesturePreview();
-                }
-
-                window.HandGesture.on('gesture', handleGesture);
-                window.HandGesture.on('started', function() {
-                    status.textContent = '手势识别已就绪';
-                });
-                window.HandGesture.on('stopped', function() {
-                    status.textContent = '已停止';
-                });
-
-                showToast('手势控制已启动，请对着摄像头做手势');
-            }).catch(function(err) {
-                console.error('手势启动失败:', err);
-                btn.disabled = false;
-                btn.innerHTML = '<i class="fas fa-play-circle"></i> 启用';
-                showToast('失败: ' + (err.message || '请检查权限'));
-                status.textContent = '启动失败';
-            });
         } else {
             console.log('Stopping gesture control');
             if (window.HandGesture && window.HandGesture.stop) {
@@ -803,6 +809,54 @@
             showToast('手势控制已停用');
         }
     };
+
+    // 初始化并启动手势识别
+    function initAndStartGesture(btn, content, status, preview) {
+        status.textContent = '正在初始化...';
+        
+        window.HandGesture.init().then(function() {
+            console.log('HandGesture initialized successfully');
+            return window.HandGesture.start();
+        }).then(function() {
+            console.log('HandGesture started successfully');
+            gestureRunning = true;
+            btn.disabled = false;
+            btn.classList.add('active');
+            btn.innerHTML = '<i class="fas fa-stop-circle"></i> 停用';
+            content.style.display = 'block';
+            status.textContent = '摄像头已启动，等待手势...';
+
+            if (preview && window.HandGesture.getCanvas) {
+                var sourceCanvas = window.HandGesture.getCanvas();
+                gesturePreviewCtx = preview.getContext('2d');
+                preview.width = 280;
+                preview.height = 150;
+                renderGesturePreview();
+            }
+
+            window.HandGesture.on('gesture', handleGesture);
+            window.HandGesture.on('started', function() {
+                status.textContent = '手势识别已就绪';
+            });
+            window.HandGesture.on('stopped', function() {
+                status.textContent = '已停止';
+            });
+
+            showToast('手势控制已启动，请对着摄像头做手势');
+        }).catch(function(err) {
+            console.error('手势启动失败:', err);
+            btn.disabled = false;
+            btn.innerHTML = '<i class="fas fa-play-circle"></i> 启用';
+            var errMsg = err.message || '请检查摄像头权限';
+            if (errMsg.includes('Permission') || errMsg.includes('permission')) {
+                errMsg = '请允许浏览器访问摄像头';
+            } else if (errMsg.includes('notFound') || errMsg.includes('NotFound')) {
+                errMsg = '未找到摄像头设备';
+            }
+            showToast('失败: ' + errMsg);
+            status.textContent = '启动失败';
+        });
+    }
 
     // 渲染预览画面
     function renderGesturePreview() {
@@ -856,8 +910,7 @@
             'open_palm': '张开手掌',
             'closed_fist': '握拳',
             'point_up': '食指向上',
-            'point_left': '食指向左',
-            'point_right': '食指向右',
+            'three_fingers': '三指伸直',
             'peace': '剪刀手',
             'thumbs_up': '点赞',
             'thumbs_down': '向下',
@@ -883,13 +936,12 @@
                 break;
             case 'point_up':
                 // 食指向上 → 切换为7天
-                showToast('手势: 向上 → 显示最近7天');
+                showToast('手势: 食指向上 → 显示最近7天');
                 switchDays(7);
                 break;
-            case 'point_left':
-            case 'point_right':
-                // 左右 → 刷新数据
-                showToast('手势: ' + (gestureName === 'point_left' ? '向左' : '向右') + ' → 刷新数据');
+            case 'three_fingers':
+                // 三指伸直 → 刷新数据
+                showToast('手势: 三指伸直 → 刷新数据');
                 refreshAll();
                 break;
             case 'thumbs_up':

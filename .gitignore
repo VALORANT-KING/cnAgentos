@@ -105,3 +105,6 @@ __pycache__/
 venv2/
 # 数据库文件
 database/
+
+venv/
+database/
