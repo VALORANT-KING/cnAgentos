@@ -196,6 +196,29 @@ def init_db():
         except Exception:
             pass
 
+        # 确保自动化管理模块存在
+        try:
+            with get_connection() as conn:
+                # 检查并添加自动化管理菜单（在瞭望管理下）
+                watch_parent = conn.execute("SELECT id FROM modules WHERE name = '瞭望管理'").fetchone()
+                if watch_parent:
+                    watch_id = watch_parent["id"]
+                    auto_manage = conn.execute("SELECT id FROM modules WHERE name = '自动化管理'").fetchone()
+                    if not auto_manage:
+                        conn.execute("INSERT INTO modules(name, icon, url, parent_id, sort_order) VALUES(?,?,?,?,?)", ("自动化管理", "layui-icon-time", "/admin/auto/manage", watch_id, 3))
+                
+                # 检查并添加自动化数据菜单（在数据仓库下）
+                data_parent = conn.execute("SELECT id FROM modules WHERE name = '数据仓库'").fetchone()
+                if data_parent:
+                    data_id = data_parent["id"]
+                    auto_data = conn.execute("SELECT id FROM modules WHERE name = '自动化数据'").fetchone()
+                    if not auto_data:
+                        conn.execute("INSERT INTO modules(name, icon, url, parent_id, sort_order) VALUES(?,?,?,?,?)", ("自动化数据", "layui-icon-file-b", "/admin/auto/data", data_id, 2))
+                
+                conn.commit()
+        except Exception:
+            pass
+
         conn.execute(
             """
             CREATE TABLE IF NOT EXISTS model_engines(
@@ -323,10 +346,17 @@ def init_db():
                 url TEXT,
                 publish_time TEXT,
                 create_at TEXT NOT NULL DEFAULT(datetime('now')),
+                is_auto INTEGER NOT NULL DEFAULT 0,
                 FOREIGN KEY (source_id) REFERENCES watch_sources(id)
             )
             """
         )
+        # 尝试添加 is_auto 字段
+        try:
+            conn.execute("ALTER TABLE watch_data ADD COLUMN is_auto INTEGER NOT NULL DEFAULT 0")
+            conn.commit()
+        except Exception:
+            pass
 
         # 任务六：接口管理表
         conn.execute(
@@ -361,6 +391,43 @@ def init_db():
                 conn.commit()
         except Exception:
             pass
+
+        # 自动化任务表
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS auto_tasks(
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL,
+                task_type TEXT DEFAULT 'collect',
+                cron_expression TEXT,
+                interval_value INTEGER DEFAULT 60,
+                interval_unit TEXT DEFAULT 'seconds',
+                source_id INTEGER DEFAULT 0,
+                keyword TEXT DEFAULT '',
+                collect_count INTEGER DEFAULT 10,
+                status INTEGER NOT NULL DEFAULT 0,
+                last_run_time TEXT,
+                next_run_time TEXT,
+                create_at TEXT NOT NULL DEFAULT(datetime('now'))
+            )
+            """
+        )
+
+        # 自动化任务日志表
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS auto_task_logs(
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                task_id INTEGER NOT NULL,
+                task_name TEXT,
+                run_time TEXT NOT NULL,
+                status TEXT NOT NULL,
+                collected_count INTEGER DEFAULT 0,
+                error_message TEXT,
+                create_at TEXT NOT NULL DEFAULT(datetime('now'))
+            )
+            """
+        )
 
         # 任务七：数字员工表
         conn.execute(
@@ -670,6 +737,43 @@ def init_db():
         except Exception:
             pass
 
+        # 团队任务4：自动化任务表
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS auto_tasks(
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL,
+                task_type TEXT DEFAULT 'collect',
+                cron_expression TEXT,
+                interval_value INTEGER DEFAULT 60,
+                interval_unit TEXT DEFAULT 'seconds',
+                source_id INTEGER DEFAULT 0,
+                keyword TEXT DEFAULT '',
+                collect_count INTEGER DEFAULT 10,
+                status INTEGER NOT NULL DEFAULT 0,
+                last_run_time TEXT,
+                next_run_time TEXT,
+                create_at TEXT NOT NULL DEFAULT(datetime('now'))
+            )
+            """
+        )
+        
+        # 自动化任务执行记录表
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS auto_task_logs(
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                task_id INTEGER NOT NULL,
+                task_name TEXT,
+                run_time TEXT NOT NULL,
+                status TEXT NOT NULL DEFAULT 'success',
+                collected_count INTEGER DEFAULT 0,
+                error_message TEXT DEFAULT '',
+                create_at TEXT NOT NULL DEFAULT(datetime('now'))
+            )
+            """
+        )
+        
         # 为已有数字员工绑定默认工具
         try:
             xiao_nong = conn.execute(
@@ -764,5 +868,42 @@ def init_db():
                         (role_id, parent_id),
                     )
                 conn.commit()
+        except Exception:
+            pass
+        
+        # 添加自动化管理菜单（在瞭望管理和数据仓库下）
+        try:
+            # 找到瞭望管理模块（parent_id=0, name='瞭望管理'）
+            watch_parent = conn.execute("SELECT id FROM modules WHERE name = '瞭望管理'").fetchone()
+            if watch_parent:
+                # 添加自动化管理子菜单
+                exists = conn.execute("SELECT id FROM modules WHERE name = '自动化管理' AND parent_id = ?", (watch_parent["id"],)).fetchone()
+                if not exists:
+                    conn.execute(
+                        "INSERT INTO modules(name, icon, url, parent_id, sort_order) VALUES(?,?,?,?,?)",
+                        ("自动化管理", "layui-icon-time", "/admin/auto/manage", watch_parent["id"], 3)
+                    )
+            
+            # 找到数据仓库模块
+            data_parent = conn.execute("SELECT id FROM modules WHERE name = '数据仓库'").fetchone()
+            if data_parent:
+                # 添加自动化数据子菜单
+                exists = conn.execute("SELECT id FROM modules WHERE name = '自动化数据' AND parent_id = ?", (data_parent["id"],)).fetchone()
+                if not exists:
+                    conn.execute(
+                        "INSERT INTO modules(name, icon, url, parent_id, sort_order) VALUES(?,?,?,?,?)",
+                        ("自动化数据", "layui-icon-form", "/admin/auto/data", data_parent["id"], 2)
+                    )
+            
+            # 为超级管理员添加权限
+            role = conn.execute("SELECT id FROM roles WHERE name = ?", ("超级管理员",)).fetchone()
+            if role:
+                role_id = role["id"]
+                modules = conn.execute("SELECT id FROM modules WHERE name IN ('自动化管理', '自动化数据')").fetchall()
+                for m in modules:
+                    exists = conn.execute("SELECT id FROM role_permissions WHERE role_id = ? AND module_id = ?", (role_id, m["id"])).fetchone()
+                    if not exists:
+                        conn.execute("INSERT INTO role_permissions(role_id, module_id) VALUES(?,?)", (role_id, m["id"]))
+            conn.commit()
         except Exception:
             pass

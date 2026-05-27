@@ -96,6 +96,19 @@ from app.controllers.admin import AdminEmployeeToolsUpdateHandler
 from app.controllers.admin import AdminEmployeeToolsDeleteHandler
 from app.controllers.admin import AdminEmployeeToolsBindHandler
 from app.controllers.admin import AdminEmployeeToolsBindingsHandler
+from app.controllers.admin import AdminAutoManageHandler
+from app.controllers.admin import AdminAutoListHandler
+from app.controllers.admin import AdminAutoAddHandler
+from app.controllers.admin import AdminAutoUpdateHandler
+from app.controllers.admin import AdminAutoDeleteHandler
+from app.controllers.admin import AdminAutoStartHandler
+from app.controllers.admin import AdminAutoStopHandler
+from app.controllers.admin import AdminAutoLogsHandler
+from app.controllers.admin import AdminAutoDataHandler
+from app.controllers.admin import AdminAutoDataListHandler
+from app.controllers.admin import AdminAutoDataDeleteHandler
+from app.controllers.admin import AdminAutoRunNowHandler
+from app.scheduler import init_scheduler, shutdown_scheduler
 from app.controllers.chat import ChatIndexHandler
 from app.controllers.chat import ChatSessionListHandler
 from app.controllers.chat import ChatSessionAddHandler
@@ -282,6 +295,18 @@ def make_app():
             (r"/admin/employee/tools/delete", AdminEmployeeToolsDeleteHandler),
             (r"/admin/employee/tools/bind", AdminEmployeeToolsBindHandler),
             (r"/admin/employee/tools/bindings", AdminEmployeeToolsBindingsHandler),
+            (r"/admin/auto/manage", AdminAutoManageHandler),
+            (r"/admin/auto/list", AdminAutoListHandler),
+            (r"/admin/auto/add", AdminAutoAddHandler),
+            (r"/admin/auto/update", AdminAutoUpdateHandler),
+            (r"/admin/auto/delete", AdminAutoDeleteHandler),
+            (r"/admin/auto/start", AdminAutoStartHandler),
+            (r"/admin/auto/stop", AdminAutoStopHandler),
+            (r"/admin/auto/logs", AdminAutoLogsHandler),
+            (r"/admin/auto/data", AdminAutoDataHandler),
+            (r"/admin/auto/data/list", AdminAutoDataListHandler),
+            (r"/admin/auto/data/delete", AdminAutoDataDeleteHandler),
+            (r"/admin/auto/run", AdminAutoRunNowHandler),
             (r"/chat", ChatIndexHandler),
             (r"/api/chat/sessions", ChatSessionListHandler),
             (r"/api/chat/session/add", ChatSessionAddHandler),
@@ -328,9 +353,17 @@ if __name__ == "__main__":
     # Windows 下建议直接使用 app.listen
     app.listen(10086, address="0.0.0.0")
 
+    # 初始化自动化任务调度器
+    init_scheduler()
+
     print("====== Server 启动成功 ======= 端口：10086 (局域网可访问) =====", flush=True)
     print("用户登录地址：http://127.0.0.1:10086/auth/login", flush=True)
     print("用户首页：http://127.0.0.1:10086/home", flush=True)
     print("智能聊天：http://127.0.0.1:10086/im", flush=True)
     print("管理后台地址：http://127.0.0.1:10086/admin/login", flush=True)
-    tornado.ioloop.IOLoop.current().start()
+    try:
+        tornado.ioloop.IOLoop.current().start()
+    except KeyboardInterrupt:
+        # 关闭调度器
+        shutdown_scheduler()
+        print("Server 已停止")

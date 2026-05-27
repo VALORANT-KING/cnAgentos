@@ -304,6 +304,17 @@
             if (isMessageForCurrentChat(payload.data)) {
                 scrollMessagesBottom();
             }
+            // 语音播报新消息（如果不是自己发送的）
+            if (!isMyMessage(payload.data) && window.TTS) {
+                var senderName = payload.data.sender_name || (payload.data.sender_id === 0 ? '数字员工' : '陌生人');
+                var content = payload.data.content || '';
+                if (payload.data.msg_type === 'file') {
+                    content = '发来一个文件';
+                } else if (payload.data.msg_type === 'sticker') {
+                    content = '发来一个动画表情';
+                }
+                TTS.notifyNewMessage(senderName, content);
+            }
             refreshConversationPreview(payload.data);
         }
         if (payload.type === 'friend_accepted') {

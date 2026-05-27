@@ -129,6 +129,7 @@
     </div>
     <script src="{{ static_url('dist/bootstrap-5.3.8-dist/js/bootstrap.bundle.min.js') }}"></script>
     <script src="{{ static_url('js/base.js') }}"></script>
+    <script src="{{ static_url('js/tts.js') }}"></script>
     <script>
         var currentSessionId = '{{ session_id }}' || 0;
         var currentModelId = 0;
@@ -389,6 +390,10 @@
                         evtSource.close();
                         removeStreamingMessage();
                         addMessage('assistant', fullContent);
+                        // 语音播报新消息
+                        if(window.TTS) {
+                            TTS.notifyNewMessage('AI助手', fullContent);
+                        }
                         streamDone = true;
                         loadSessions();
                         isLoading = false;

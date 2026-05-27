@@ -85,3 +85,47 @@ class WatchRepository:
         with get_connection() as conn:
             conn.execute(f"DELETE FROM watch_data WHERE id IN ({placeholders})", data_ids)
             conn.commit()
+
+    @staticmethod
+    def add_watch_data(source_id, keyword, title, content, url, publish_time, is_auto=0):
+        """添加采集数据，支持标记是否自动采集"""
+        with get_connection() as conn:
+            # 检查是否已存在 (简单通过 URL 查重)
+            exists = conn.execute("SELECT id FROM watch_data WHERE url = ?", (url,)).fetchone()
+            if exists:
+                return False
+            conn.execute(
+                """
+                INSERT INTO watch_data (source_id, keyword, title, content, url, publish_time, is_auto)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                (source_id, keyword, title, content, url, publish_time, is_auto)
+            )
+            conn.commit()
+            return True
+
+    @staticmethod
+    def get_auto_data(page=1, page_size=20, keyword=None):
+        """获取自动采集的数据"""
+        offset = (page - 1) * page_size
+        query = "SELECT d.*, s.name as source_name FROM watch_data d LEFT JOIN watch_sources s ON d.source_id = s.id WHERE d.is_auto = 1"
+        params = []
+        if keyword:
+            query += " AND (d.title LIKE ? OR d.keyword LIKE ?)"
+            params.extend([f"%{keyword}%", f"%{keyword}%"])
+        
+        query += " ORDER BY d.id DESC LIMIT ? OFFSET ?"
+        params.extend([page_size, offset])
+        
+        with get_connection() as conn:
+            rows = conn.execute(query, params).fetchall()
+            
+            count_query = "SELECT COUNT(*) FROM watch_data d WHERE d.is_auto = 1"
+            count_params = []
+            if keyword:
+                count_query += " AND (d.title LIKE ? OR d.keyword LIKE ?)"
+                count_params.extend([f"%{keyword}%", f"%{keyword}%"])
+            
+            total = conn.execute(count_query, count_params).fetchone()[0]
+            
+            return [dict(row) for row in rows], total

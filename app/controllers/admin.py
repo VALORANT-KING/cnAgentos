@@ -8,6 +8,8 @@ from app.models.model_engine import ModelEngineRepository
 from app.models.watch import WatchRepository
 from app.models.api_service import ApiServiceRepository
 from app.models.digital_employee import DigitalEmployeeRepository
+from app.models.auto_task import AutoTaskRepository
+from app.scheduler import start_task, stop_task, execute_auto_task
 import requests
 import urllib3
 from bs4 import BeautifulSoup
@@ -1259,4 +1261,180 @@ class AdminEmployeeToolsBindingsHandler(AdminBaseHandler):
             return self.write({"code": 1, "msg": "参数错误"})
         tool_ids = EmployeeToolRepository.get_binding_ids(employee_id)
         self.write({"code": 0, "msg": "", "data": tool_ids})
+
+
+# --- 自动化管理 ---
+
+class AdminAutoManageHandler(AdminBaseHandler):
+    @tornado.web.authenticated
+    def get(self):
+        self.render("admin_auto_manage.html")
+
+
+class AdminAutoListHandler(AdminBaseHandler):
+    @tornado.web.authenticated
+    def get(self):
+        page = int(self.get_argument("page", 1))
+        limit = int(self.get_argument("limit", 20))
+        tasks, total = AutoTaskRepository.get_all_tasks(page, limit)
+        self.write({"code": 0, "msg": "", "count": total, "data": tasks})
+
+
+class AdminAutoAddHandler(AdminBaseHandler):
+    @tornado.web.authenticated
+    def post(self):
+        name = self.get_body_argument("name", "").strip()
+        task_type = self.get_body_argument("task_type", "collect").strip()
+        cron_expression = self.get_body_argument("cron_expression", "").strip()
+        interval_value = int(self.get_body_argument("interval_value", 60))
+        interval_unit = self.get_body_argument("interval_unit", "seconds").strip()
+        source_id = int(self.get_body_argument("source_id", 0))
+        keyword = self.get_body_argument("keyword", "").strip()
+        collect_count = int(self.get_body_argument("collect_count", 10))
+
+        if not name:
+            return self.write({"code": 1, "msg": "任务名称不能为空"})
+
+        AutoTaskRepository.add_task(
+            name, task_type, cron_expression if cron_expression else None,
+            interval_value, interval_unit, source_id, keyword, collect_count
+        )
+        self.write({"code": 0, "msg": "添加成功"})
+
+
+class AdminAutoUpdateHandler(AdminBaseHandler):
+    @tornado.web.authenticated
+    def post(self):
+        task_id = int(self.get_body_argument("id", 0))
+        name = self.get_body_argument("name", "").strip()
+        task_type = self.get_body_argument("task_type", "collect").strip()
+        cron_expression = self.get_body_argument("cron_expression", "").strip()
+        interval_value = int(self.get_body_argument("interval_value", 60))
+        interval_unit = self.get_body_argument("interval_unit", "seconds").strip()
+        source_id = int(self.get_body_argument("source_id", 0))
+        keyword = self.get_body_argument("keyword", "").strip()
+        collect_count = int(self.get_body_argument("collect_count", 10))
+        status = int(self.get_body_argument("status", 0))
+
+        if not task_id:
+            return self.write({"code": 1, "msg": "任务ID不能为空"})
+
+        AutoTaskRepository.update_task(
+            task_id, name=name, task_type=task_type,
+            cron_expression=cron_expression if cron_expression else None,
+            interval_value=interval_value, interval_unit=interval_unit,
+            source_id=source_id, keyword=keyword, collect_count=collect_count,
+            status=status
+        )
+        self.write({"code": 0, "msg": "更新成功"})
+
+
+class AdminAutoDeleteHandler(AdminBaseHandler):
+    @tornado.web.authenticated
+    def post(self):
+        task_id = int(self.get_body_argument("id", 0))
+        if not task_id:
+            return self.write({"code": 1, "msg": "参数错误"})
+        AutoTaskRepository.delete_task(task_id)
+        self.write({"code": 0, "msg": "删除成功"})
+
+
+class AdminAutoStartHandler(AdminBaseHandler):
+    @tornado.web.authenticated
+    def post(self):
+        task_id = int(self.get_body_argument("id", 0))
+        if not task_id:
+            return self.write({"code": 1, "msg": "参数错误"})
+        if start_task(task_id):
+            self.write({"code": 0, "msg": "任务已启动"})
+        else:
+            self.write({"code": 1, "msg": "任务不存在"})
+
+
+class AdminAutoStopHandler(AdminBaseHandler):
+    @tornado.web.authenticated
+    def post(self):
+        task_id = int(self.get_body_argument("id", 0))
+        if not task_id:
+            return self.write({"code": 1, "msg": "参数错误"})
+        if stop_task(task_id):
+            self.write({"code": 0, "msg": "任务已停止"})
+        else:
+            self.write({"code": 1, "msg": "任务不存在"})
+
+
+class AdminAutoLogsHandler(AdminBaseHandler):
+    @tornado.web.authenticated
+    def get(self):
+        task_id = int(self.get_argument("task_id", 0))
+        page = int(self.get_argument("page", 1))
+        limit = int(self.get_argument("limit", 20))
+        logs, total = AutoTaskRepository.get_task_logs(
+            task_id if task_id else None, page, limit
+        )
+        self.write({"code": 0, "msg": "", "count": total, "data": logs})
+
+
+class AdminAutoDataHandler(AdminBaseHandler):
+    @tornado.web.authenticated
+    def get(self):
+        self.render("admin_auto_data.html")
+
+
+class AdminAutoDataListHandler(AdminBaseHandler):
+    @tornado.web.authenticated
+    def get(self):
+        page = int(self.get_argument("page", 1))
+        limit = int(self.get_argument("limit", 20))
+        keyword = self.get_argument("keyword", "").strip()
+        data_list, total = WatchRepository.get_auto_data(
+            page, limit, keyword if keyword else None
+        )
+        self.write({"code": 0, "msg": "", "count": total, "data": data_list})
+
+
+class AdminAutoDataDeleteHandler(AdminBaseHandler):
+    @tornado.web.authenticated
+    def post(self):
+        import json
+        ids_str = self.get_body_argument("ids", "[]")
+        try:
+            ids = json.loads(ids_str)
+            if not ids:
+                return self.write({"code": 1, "msg": "请选择要删除的数据"})
+            WatchRepository.delete_data(ids)
+            return self.write({"code": 0, "msg": "删除成功"})
+        except Exception as e:
+            return self.write({"code": 1, "msg": f"删除失败: {str(e)}"})
+
+
+class AdminAutoRunNowHandler(AdminBaseHandler):
+    @tornado.web.authenticated
+    def post(self):
+        task_id = int(self.get_body_argument("id", 0))
+        if not task_id:
+            return self.write({"code": 1, "msg": "参数错误"})
+        
+        task = AutoTaskRepository.get_task_by_id(task_id)
+        if not task:
+            return self.write({"code": 1, "msg": "任务不存在"})
+        
+        try:
+            total_saved = execute_auto_task(task_id)
+            msg = f"手动执行完成"
+            if total_saved > 0:
+                msg += f"，采集到 {total_saved} 条新数据"
+            else:
+                msg += "，未采集到新数据"
+            
+            return self.write({
+                "code": 0,
+                "msg": msg,
+                "count": total_saved,
+                "need_announce": total_saved > 0
+            })
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
+            return self.write({"code": 1, "msg": f"执行失败: {str(e)}"})
 

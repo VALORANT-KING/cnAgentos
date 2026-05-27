@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>自动化管理</title>
+    <link rel="stylesheet" href="/static/dist/layui-v2.13.6/layui/css/layui.css">
+</head>
+<body class="layui-layout-body" style="padding: 15px;">
+    <div class="layui-card">
+        <div class="layui-card-header">自动化任务管理</div>
+        <div class="layui-card-body">
+            <button class="layui-btn" id="btnAdd">新增任务</button>
+            <button class="layui-btn layui-btn-normal" id="btnRefresh">刷新列表</button>
+            <table id="taskTable" lay-filter="taskTable"></table>
+        </div>
+    </div>
+
+    <script src="/static/dist/layui-v2.13.6/layui/layui.js"></script>
+    <script>
+        layui.use(['table', 'form', 'layer', 'jquery'], function(){
+            var table = layui.table, form = layui.form, layer = layui.layer, $ = layui.jquery;
+
+            function getCookie(name) {
+                var r = document.cookie.match("\\b" + name + "=([^;]*)\\b");
+                return r ? r[1] : undefined;
+            }
+
+            $.ajaxSetup({
+                beforeSend: function(xhr, settings) {
+                    if (settings.type === 'POST') {
+                        xhr.setRequestHeader("X-XSRFToken", getCookie("_xsrf"));
+                    }
+                }
+            });
+
+            // 获取采集源列表
+            var sources = [];
+            $.get('/admin/watch/source/list', function(res){
+                if(res.code === 0){
+                    sources = res.data.filter(function(s){ return s.status === 1; });
+                }
+            });
+
+            table.render({
+                elem: '#taskTable',
+                url: '/admin/auto/list',
+                cols: [[
+                    {field: 'id', title: 'ID', width: 80},
+                    {field: 'name', title: '任务名称', width: 180},
+                    {field: 'keyword', title: '关键词', width: 150},
+                    {field: 'source_name', title: '采集源', width: 120},
+                    {field: 'collect_count', title: '采集条数', width: 100},
+                    {field: 'interval_value', title: '执行间隔', width: 120, templet: function(d){
+                        return d.interval_value + ' ' + (d.interval_unit === 'seconds' ? '秒' : d.interval_unit === 'minutes' ? '分钟' : d.interval_unit === 'hours' ? '小时' : '天');
+                    }},
+                    {field: 'status', title: '状态', width: 100, templet: function(d){
+                        return d.status === 1 ? '<span class="layui-badge layui-bg-green">运行中</span>' : '<span class="layui-badge layui-bg-gray">已停止</span>';
+                    }},
+                    {field: 'last_run_time', title: '最后执行', width: 180},
+                    {field: 'create_at', title: '创建时间', width: 180},
+                    {title: '操作', width: 280, templet: function(d){
+                        var actions = '<a class="layui-btn layui-btn-xs" lay-event="edit">编辑</a>';
+                        if(d.status === 1){
+                            actions += '<a class="layui-btn layui-btn-warm layui-btn-xs" lay-event="stop">停止</a>';
+                        } else {
+                            actions += '<a class="layui-btn layui-btn-normal layui-btn-xs" lay-event="start">启动</a>';
+                        }
+                        actions += '<a class="layui-btn layui-btn-xs" lay-event="run">立即执行</a>';
+                        actions += '<a class="layui-btn layui-btn-xs layui-btn-primary" lay-event="logs">日志</a>';
+                        actions += '<a class="layui-btn layui-btn-danger layui-btn-xs" lay-event="del">删除</a>';
+                        return actions;
+                    }}
+                ]]
+            });
+
+            $('#btnAdd').click(function(){
+                openTaskForm('新增任务', {});
+            });
+
+            $('#btnRefresh').click(function(){
+                table.reload('taskTable');
+            });
+
+            table.on('tool(taskTable)', function(obj){
+                if(obj.event === 'edit'){
+                    openTaskForm('编辑任务', obj.data);
+                } else if(obj.event === 'del'){
+                    layer.confirm('确定删除该任务吗？', function(index){
+                        $.post('/admin/auto/delete', {id: obj.data.id}, function(res){
+                            if(res.code === 0){
+                                layer.msg('删除成功');
+                                table.reload('taskTable');
+                            } else {
+                                layer.msg(res.msg);
+                            }
+                        });
+                        layer.close(index);
+                    });
+                } else if(obj.event === 'start'){
+                    $.post('/admin/auto/start', {id: obj.data.id}, function(res){
+                        if(res.code === 0){
+                            layer.msg('任务已启动');
+                            table.reload('taskTable');
+                        } else {
+                            layer.msg(res.msg);
+                        }
+                    });
+                } else if(obj.event === 'stop'){
+                    $.post('/admin/auto/stop', {id: obj.data.id}, function(res){
+                        if(res.code === 0){
+                            layer.msg('任务已停止');
+                            table.reload('taskTable');
+                        } else {
+                            layer.msg(res.msg);
+                        }
+                    });
+                } else if(obj.event === 'run'){
+                    layer.confirm('确定立即执行该任务吗？', function(index){
+                        $.post('/admin/auto/run', {id: obj.data.id}, function(res){
+                            if(res.code === 0){
+                                layer.msg(res.msg);
+                                table.reload('taskTable');
+                                if(res.need_announce && res.count > 0){
+                                    speak('时间' + new Date().toLocaleTimeString() + '，采集到' + res.count + '条新闻，请你及时查看');
+                                }
+                            } else {
+                                layer.msg(res.msg);
+                            }
+                        });
+                        layer.close(index);
+                    });
+                } else if(obj.event === 'logs'){
+                    openLogsDialog(obj.data);
+                }
+            });
+
+            function openTaskForm(title, data){
+                var sourceOptions = '<option value="">请选择采集源</option>';
+                sources.forEach(function(s){
+                    var selected = s.id === data.source_id ? 'selected' : '';
+                    sourceOptions += '<option value="' + s.id + '" ' + selected + '>' + s.name + '</option>';
+                });
+
+                layer.open({
+                    type: 1,
+                    title: title,
+                    area: ['650px', '600px'],
+                    content: `
+                        <form class="layui-form" style="padding: 20px;">
+                            <input type="hidden" name="id" value="${data.id || ''}">
+                            <div class="layui-form-item">
+                                <label class="layui-form-label">任务名称</label>
+                                <div class="layui-input-block">
+                                    <input type="text" name="name" required lay-verify="required" placeholder="请输入任务名称" class="layui-input" value="${data.name || ''}">
+                                </div>
+                            </div>
+                            <div class="layui-form-item">
+                                <label class="layui-form-label">采集源</label>
+                                <div class="layui-input-block">
+                                    <select name="source_id" required lay-verify="required">
+                                        ${sourceOptions}
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="layui-form-item">
+                                <label class="layui-form-label">关键词</label>
+                                <div class="layui-input-block">
+                                    <input type="text" name="keyword" required lay-verify="required" placeholder="请输入关键词" class="layui-input" value="${data.keyword || ''}">
+                                </div>
+                            </div>
+                            <div class="layui-form-item">
+                                <label class="layui-form-label">采集条数</label>
+                                <div class="layui-input-block">
+                                    <input type="number" name="collect_count" placeholder="每次采集多少条" class="layui-input" value="${data.collect_count || 10}">
+                                </div>
+                            </div>
+                            <div class="layui-form-item">
+                                <label class="layui-form-label">执行间隔</label>
+                                <div class="layui-input-block" style="display: flex;">
+                                    <input type="number" name="interval_value" placeholder="间隔值" class="layui-input" style="width: 45%;" value="${data.interval_value || 60}">
+                                    <select name="interval_unit" style="width: 45%; margin-left: 10px;">
+                                        <option value="seconds" ${data.interval_unit === 'seconds' ? 'selected' : ''}>秒</option>
+                                        <option value="minutes" ${data.interval_unit === 'minutes' ? 'selected' : ''}>分钟</option>
+                                        <option value="hours" ${data.interval_unit === 'hours' ? 'selected' : ''}>小时</option>
+                                        <option value="days" ${data.interval_unit === 'days' ? 'selected' : ''}>天</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="layui-form-item">
+                                <label class="layui-form-label">状态</label>
+                                <div class="layui-input-block">
+                                    <input type="radio" name="status" value="1" title="启动" ${data.status === 1 ? 'checked' : ''}>
+                                    <input type="radio" name="status" value="0" title="停止" ${data.status !== 1 ? 'checked' : ''}>
+                                </div>
+                            </div>
+                            <div class="layui-form-item">
+                                <div class="layui-input-block">
+                                    <button class="layui-btn" lay-submit lay-filter="taskSubmit">立即提交</button>
+                                </div>
+                            </div>
+                        </form>
+                    `,
+                    success: function(layero, index){
+                        form.render();
+                        form.on('submit(taskSubmit)', function(formData){
+                            var url = formData.field.id ? '/admin/auto/update' : '/admin/auto/add';
+                            $.post(url, formData.field, function(res){
+                                if(res.code === 0){
+                                    layer.msg(res.msg);
+                                    layer.close(index);
+                                    table.reload('taskTable');
+                                } else {
+                                    layer.msg(res.msg);
+                                }
+                            });
+                            return false;
+                        });
+                    }
+                });
+            }
+
+            function openLogsDialog(task){
+                layer.open({
+                    type: 1,
+                    title: '任务执行日志 - ' + task.name,
+                    area: ['800px', '500px'],
+                    content: `
+                        <div style="padding: 15px;">
+                            <table id="logsTable" lay-filter="logsTable"></table>
+                        </div>
+                    `,
+                    success: function(layero, index){
+                        table.render({
+                            elem: '#logsTable',
+                            url: '/admin/auto/logs?task_id=' + task.id,
+                            cols: [[
+                                {field: 'id', title: 'ID', width: 80},
+                                {field: 'task_name', title: '任务名称', width: 150},
+                                {field: 'run_time', title: '执行时间', width: 180},
+                                {field: 'status', title: '状态', width: 100, templet: function(d){
+                                    if(d.status === 'success'){
+                                        return '<span class="layui-badge layui-bg-green">成功</span>';
+                                    } else if(d.status === 'warning'){
+                                        return '<span class="layui-badge layui-bg-orange">警告</span>';
+                                    } else {
+                                        return '<span class="layui-badge layui-bg-red">失败</span>';
+                                    }
+                                }},
+                                {field: 'collected_count', title: '采集条数', width: 100},
+                                {field: 'error_message', title: '错误信息'}
+                            ]]
+                        });
+                    }
+                });
+            }
+
+            // 语音播报函数
+            function speak(text){
+                if('speechSynthesis' in window){
+                    var utterance = new SpeechSynthesisUtterance(text);
+                    utterance.lang = 'zh-CN';
+                    utterance.rate = 0.9;
+                    window.speechSynthesis.speak(utterance);
+                }
+            }
+            
+            // 记录已经播报过的日志ID，避免重复播报
+            var announcedLogIds = new Set();
+            
+            // 加载页面时，先获取所有日志ID，避免一进来就播报历史记录
+            function initAnnouncedLogs(){
+                $.get('/admin/auto/logs?limit=50', function(res){
+                    if(res.code === 0){
+                        res.data.forEach(function(log){
+                            announcedLogIds.add(log.id);
+                        });
+                    }
+                });
+            }
+            
+            // 轮询检查新的任务日志
+            function pollNewLogs(){
+                $.get('/admin/auto/logs?limit=10', function(res){
+                    if(res.code === 0){
+                        // 检查是否有新的成功日志
+                        res.data.forEach(function(log){
+                            if(!announcedLogIds.has(log.id) && log.status === 'success' && log.collected_count > 0){
+                                // 这是一条新的成功日志，播报
+                                announcedLogIds.add(log.id);
+                                speak('时间' + log.run_time.split(' ')[1] + '，采集到' + log.collected_count + '条新闻，请你及时查看');
+                                // 同时刷新任务列表
+                                table.reload('taskTable');
+                            }
+                        });
+                    }
+                });
+            }
+            
+            // 初始化
+            initAnnouncedLogs();
+            
+            // 每10秒轮询一次新日志
+            setInterval(pollNewLogs, 10000);
+        });
+    </script>
+</body>
+</html>

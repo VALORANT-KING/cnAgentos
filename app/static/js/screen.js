@@ -723,6 +723,199 @@
         disposeAll();
     });
 
+    // === 手势识别相关代码 ===
+    var gestureRunning = false;
+    var gesturePreviewCtx = null;
+    var gesturePreviewAnim = null;
+
+    // 启动/停止手势控制
+    window.toggleGestureControl = function() {
+        console.log('Gesture toggle clicked');
+        var btn = document.getElementById('gestureToggleBtn');
+        var content = document.getElementById('gestureContent');
+        var status = document.getElementById('gestureStatus');
+        var preview = document.getElementById('gesturePreviewCanvas');
+
+        console.log('Current gestureRunning:', gestureRunning);
+
+        if (!gestureRunning) {
+            console.log('Starting gesture control');
+            status.textContent = '正在初始化...';
+            btn.disabled = true;
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> 加载中...';
+            
+            if (!window.HandGesture) {
+                console.error('HandGesture not loaded');
+                showToast('手势识别模块加载中，请稍后...');
+                status.textContent = '模块加载中...';
+                btn.disabled = false;
+                btn.innerHTML = '<i class="fas fa-play-circle"></i> 启用';
+                return;
+            }
+
+            window.HandGesture.init().then(function() {
+                console.log('HandGesture initialized successfully');
+                return window.HandGesture.start();
+            }).then(function() {
+                console.log('HandGesture started successfully');
+                gestureRunning = true;
+                btn.disabled = false;
+                btn.classList.add('active');
+                btn.innerHTML = '<i class="fas fa-stop-circle"></i> 停用';
+                content.style.display = 'block';
+                status.textContent = '摄像头已启动，等待手势...';
+
+                if (preview && window.HandGesture.getCanvas) {
+                    var sourceCanvas = window.HandGesture.getCanvas();
+                    gesturePreviewCtx = preview.getContext('2d');
+                    preview.width = 280;
+                    preview.height = 150;
+                    renderGesturePreview();
+                }
+
+                window.HandGesture.on('gesture', handleGesture);
+                window.HandGesture.on('started', function() {
+                    status.textContent = '手势识别已就绪';
+                });
+                window.HandGesture.on('stopped', function() {
+                    status.textContent = '已停止';
+                });
+
+                showToast('手势控制已启动，请对着摄像头做手势');
+            }).catch(function(err) {
+                console.error('手势启动失败:', err);
+                btn.disabled = false;
+                btn.innerHTML = '<i class="fas fa-play-circle"></i> 启用';
+                showToast('失败: ' + (err.message || '请检查权限'));
+                status.textContent = '启动失败';
+            });
+        } else {
+            console.log('Stopping gesture control');
+            if (window.HandGesture && window.HandGesture.stop) {
+                window.HandGesture.stop();
+            }
+            gestureRunning = false;
+            btn.classList.remove('active');
+            btn.innerHTML = '<i class="fas fa-play-circle"></i> 启用';
+            content.style.display = 'none';
+            stopPreviewRender();
+            status.textContent = '已停止';
+            showToast('手势控制已停用');
+        }
+    };
+
+    // 渲染预览画面
+    function renderGesturePreview() {
+        if (!gestureRunning) return;
+        
+        if (window.HandGesture && window.HandGesture.getCanvas && gesturePreviewCtx) {
+            var sourceCanvas = window.HandGesture.getCanvas();
+            if (sourceCanvas && sourceCanvas.width > 0) {
+                var preview = document.getElementById('gesturePreviewCanvas');
+                gesturePreviewCtx.clearRect(0, 0, preview.width, preview.height);
+                
+                // 绘制图像
+                gesturePreviewCtx.drawImage(sourceCanvas, 0, 0, preview.width, preview.height);
+                
+                // 添加扫描线效果
+                gesturePreviewCtx.strokeStyle = 'rgba(0, 220, 255, 0.3)';
+                gesturePreviewCtx.lineWidth = 2;
+                gesturePreviewCtx.beginPath();
+                var scanLineY = (Date.now() % 3000) / 3000 * preview.height;
+                gesturePreviewCtx.moveTo(0, scanLineY);
+                gesturePreviewCtx.lineTo(preview.width, scanLineY);
+                gesturePreviewCtx.stroke();
+            }
+        }
+        
+        gesturePreviewAnim = requestAnimationFrame(renderGesturePreview);
+    }
+
+    // 停止预览渲染
+    function stopPreviewRender() {
+        if (gesturePreviewAnim) {
+            cancelAnimationFrame(gesturePreviewAnim);
+            gesturePreviewAnim = null;
+        }
+    }
+
+    // 处理手势事件
+    function handleGesture(gestureName) {
+        var status = document.getElementById('gestureStatus');
+        var panel = document.getElementById('gestureControlPanel');
+        
+        // 添加动画效果
+        if (panel) {
+            panel.classList.remove('gesture-active');
+            void panel.offsetWidth; // 触发重绘
+            panel.classList.add('gesture-active');
+        }
+
+        // 手势名称映射
+        var gestureMap = {
+            'open_palm': '张开手掌',
+            'closed_fist': '握拳',
+            'point_up': '食指向上',
+            'point_left': '食指向左',
+            'point_right': '食指向右',
+            'peace': '剪刀手',
+            'thumbs_up': '点赞',
+            'thumbs_down': '向下',
+            'unknown': '未知手势'
+        };
+
+        var displayName = gestureMap[gestureName] || gestureName;
+        if (status) {
+            status.textContent = '识别到: ' + displayName;
+        }
+
+        // 执行对应操作
+        switch (gestureName) {
+            case 'open_palm':
+                // 张开手掌 → 刷新分析
+                showToast('手势: 张开手掌 → 刷新分析');
+                refreshAnalyze();
+                break;
+            case 'closed_fist':
+                // 握拳 → 切换图表类型
+                showToast('手势: 握拳 → 切换图表');
+                toggleChartType();
+                break;
+            case 'point_up':
+                // 食指向上 → 切换为7天
+                showToast('手势: 向上 → 显示最近7天');
+                switchDays(7);
+                break;
+            case 'point_left':
+            case 'point_right':
+                // 左右 → 刷新数据
+                showToast('手势: ' + (gestureName === 'point_left' ? '向左' : '向右') + ' → 刷新数据');
+                refreshAll();
+                break;
+            case 'thumbs_up':
+                // 点赞 → 切换为30天
+                showToast('手势: 点赞 → 显示最近30天');
+                switchDays(30);
+                break;
+            case 'peace':
+                // 剪刀手 → 暂停/继续自动刷新
+                showToast('手势: 剪刀手 → 切换自动刷新');
+                toggleAutoRefresh();
+                break;
+        }
+    }
+
+    // 切换自动刷新
+    function toggleAutoRefresh() {
+        if (refreshTimer) {
+            stopAutoRefresh();
+            showToast('自动刷新已暂停');
+        } else {
+            startAutoRefresh();
+            showToast('自动刷新已恢复');
+        }
+    }
+
     document.addEventListener('DOMContentLoaded', function() {
         if (typeof echarts === 'undefined') {
             console.error('ECharts not loaded');

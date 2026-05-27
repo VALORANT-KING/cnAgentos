@@ -125,6 +125,64 @@
         </div>
     </div>
 
+    <!-- 手势识别控制条 -->
+    <div class="gesture-control-panel" id="gestureControlPanel">
+        <div class="gesture-header">
+            <i class="fas fa-hand-paper"></i> 视觉手势控制
+            <button class="gesture-toggle-btn" id="gestureToggleBtn" onclick="toggleGestureControl()">
+                <i class="fas fa-play-circle"></i> 启用
+            </button>
+        </div>
+        <div class="gesture-content" id="gestureContent" style="display:none;">
+            <div class="gesture-preview-wrap">
+                <canvas id="gesturePreviewCanvas" class="gesture-preview"></canvas>
+                <div class="gesture-status" id="gestureStatus">等待启用...</div>
+            </div>
+            <div class="gesture-guide">
+                <div class="gesture-item">
+                    <span class="gesture-icon">👐</span>
+                    <span class="gesture-text">张开手掌</span>
+                    <span class="gesture-action">刷新分析</span>
+                </div>
+                <div class="gesture-item">
+                    <span class="gesture-icon">✊</span>
+                    <span class="gesture-text">握拳</span>
+                    <span class="gesture-action">切换图表类型</span>
+                </div>
+                <div class="gesture-item">
+                    <span class="gesture-icon">☝️</span>
+                    <span class="gesture-text">食指向上</span>
+                    <span class="gesture-action">切换7天</span>
+                </div>
+                <div class="gesture-item">
+                    <span class="gesture-icon">👈</span>
+                    <span class="gesture-text">食指向左</span>
+                    <span class="gesture-action">查看热点</span>
+                </div>
+                <div class="gesture-item">
+                    <span class="gesture-icon">👉</span>
+                    <span class="gesture-text">食指向右</span>
+                    <span class="gesture-action">查看热点</span>
+                </div>
+                <div class="gesture-item">
+                    <span class="gesture-icon">👍</span>
+                    <span class="gesture-text">点赞</span>
+                    <span class="gesture-action">切换30天</span>
+                </div>
+                <div class="gesture-item">
+                    <span class="gesture-icon">✌️</span>
+                    <span class="gesture-text">剪刀手</span>
+                    <span class="gesture-action">暂停/继续</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- MediaPipe 手势识别依赖 -->
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4.1646424915/hands.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils@0.3.1640029074/camera_utils.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils@0.3.1635989137/drawing_utils.js"></script>
+    <script src="/static/js/hand-gesture.js"></script>
     <script src="/static/dist/echarts/echarts.min.js"></script>
     <script src="/static/dist/echarts-gl/echarts-gl.min.js"></script>
     <script src="/static/dist/echarts-wordcloud/echarts-wordcloud.min.js"></script>
