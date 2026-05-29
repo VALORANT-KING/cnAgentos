@@ -5,17 +5,250 @@ import sqlite3
 # 获得项目根路径的方法
 def _project_root():
     return os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir, os.pardir))
-#获得数据文件的路径
-DB_PATH = os.path.join(_project_root(),"database","app.db")
 
-def get_connection():
-    os.makedirs(os.path.dirname(DB_PATH),exist_ok=True)
+
+# 统一环境目录（依赖包、数据库、上传文件），均使用相对项目根的路径
+ENV_REL_DIR = "env"
+DEFAULT_SQLITE_REL_PATH = "env/database/app.db"
+
+
+def _env_path(*parts):
+    """解析 env 目录下的绝对路径。"""
+    return os.path.join(_project_root(), ENV_REL_DIR, *parts)
+
+
+# 配置注册表与默认 SQLite 文件（db_configs 始终保存在此文件）
+DB_PATH = _env_path("database", "app.db")
+
+_active_config_cache = None
+
+
+def reload_db_config():
+    global _active_config_cache
+    _active_config_cache = None
+
+
+def get_meta_connection():
+    """始终连接本地 SQLite 注册库，用于 db_configs 与 init_db。"""
+    os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     return conn
 
+
+def _resolve_sqlite_path(database_name):
+    path = (database_name or DEFAULT_SQLITE_REL_PATH).strip()
+    if not path:
+        path = DEFAULT_SQLITE_REL_PATH
+    if not os.path.isabs(path):
+        path = os.path.join(_project_root(), path.replace("/", os.sep))
+    parent = os.path.dirname(path)
+    if parent:
+        os.makedirs(parent, exist_ok=True)
+    return path
+
+
+def _load_active_config():
+    global _active_config_cache
+    if _active_config_cache is not None:
+        return _active_config_cache
+    try:
+        with get_meta_connection() as conn:
+            row = conn.execute("SELECT * FROM db_configs WHERE is_active = 1 LIMIT 1").fetchone()
+            if row:
+                _active_config_cache = dict(row)
+                return _active_config_cache
+    except Exception:
+        pass
+    _active_config_cache = {
+        "db_type": "sqlite",
+        "database_name": DEFAULT_SQLITE_REL_PATH,
+        "host": "",
+        "port": 3306,
+        "username": "",
+        "password": "",
+    }
+    return _active_config_cache
+
+
+class _MySQLRow:
+    """兼容 sqlite3.Row：同时支持 row[0] 与 row['col']。"""
+
+    def __init__(self, values, keys):
+        self._values = tuple(values)
+        self._keys = list(keys)
+        self._map = {k: v for k, v in zip(self._keys, self._values)}
+
+    def __getitem__(self, key):
+        if isinstance(key, int):
+            return self._values[key]
+        return self._map[key]
+
+    def keys(self):
+        return self._keys
+
+    def __iter__(self):
+        return iter(self._values)
+
+    def __len__(self):
+        return len(self._values)
+
+
+class _MySQLCursorWrapper:
+    def __init__(self, cursor):
+        self._cursor = cursor
+
+    def _wrap(self, row):
+        if row is None:
+            return None
+        if isinstance(row, dict):
+            keys = list(row.keys())
+            values = [row[k] for k in keys]
+        else:
+            keys = [d[0] for d in (self._cursor.description or [])]
+            values = list(row)
+        return _MySQLRow(values, keys)
+
+    def fetchone(self):
+        return self._wrap(self._cursor.fetchone())
+
+    def fetchall(self):
+        return [self._wrap(r) for r in self._cursor.fetchall()]
+
+    @property
+    def lastrowid(self):
+        return self._cursor.lastrowid
+
+    @property
+    def rowcount(self):
+        return self._cursor.rowcount
+
+
+def _normalize_mysql_sql(sql):
+    import re
+    sql = sql.replace("?", "%s")
+    sql = re.sub(r"last_insert_rowid\s*\(\s*\)", "LAST_INSERT_ID()", sql, flags=re.IGNORECASE)
+    sql = re.sub(r"INSERT\s+OR\s+IGNORE", "INSERT IGNORE", sql, flags=re.IGNORECASE)
+    sql = re.sub(r"INSERT\s+OR\s+REPLACE", "REPLACE", sql, flags=re.IGNORECASE)
+    return sql
+
+
+class _MySQLConnectionAdapter:
+    def __init__(self, conn):
+        self._conn = conn
+
+    def execute(self, sql, params=()):
+        if params is None:
+            params = ()
+        if isinstance(params, list):
+            params = tuple(params)
+        sql = _normalize_mysql_sql(sql)
+        cursor = self._conn.cursor()
+        cursor.execute(sql, params)
+        return _MySQLCursorWrapper(cursor)
+
+    def commit(self):
+        self._conn.commit()
+
+    def close(self):
+        self._conn.close()
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc, tb):
+        self.close()
+
+
+def _connect_mysql(cfg):
+    import pymysql
+    conn = pymysql.connect(
+        host=cfg.get("host") or "127.0.0.1",
+        port=int(cfg.get("port") or 3306),
+        user=cfg.get("username") or "root",
+        password=cfg.get("password") or "",
+        database=cfg.get("database_name") or "",
+        charset="utf8mb4",
+        cursorclass=pymysql.cursors.DictCursor,
+        autocommit=False,
+    )
+    return _MySQLConnectionAdapter(conn)
+
+
+def _connect_sqlite(cfg):
+    path = _resolve_sqlite_path(cfg.get("database_name"))
+    conn = sqlite3.connect(path)
+    conn.row_factory = sqlite3.Row
+    return conn
+
+
+def test_connection_with_config(cfg):
+    db_type = (cfg.get("db_type") or "sqlite").lower()
+    try:
+        if db_type == "mysql":
+            if not (cfg.get("database_name") or "").strip():
+                return False, "MySQL 数据库名不能为空"
+            conn = _connect_mysql(cfg)
+            conn.execute("SELECT 1")
+            conn.close()
+            return True, "MySQL 连接成功"
+        path = _resolve_sqlite_path(cfg.get("database_name"))
+        conn = sqlite3.connect(path)
+        conn.execute("SELECT 1")
+        conn.close()
+        return True, "SQLite 连接成功: " + path
+    except Exception as e:
+        return False, "连接失败: " + str(e)
+
+
+def row_to_dict(row):
+    """将 sqlite3.Row / _MySQLRow 转为普通 dict。"""
+    if row is None:
+        return None
+    if hasattr(row, "keys"):
+        return {k: row[k] for k in row.keys()}
+    return dict(row)
+
+
+def as_int(val, default=0):
+    """MySQL 常将整型列读成 str，统一转为 int 便于比较。"""
+    if val is None:
+        return default
+    try:
+        return int(val)
+    except (TypeError, ValueError):
+        return default
+
+
+def get_connection():
+    """根据 db_configs 中 is_active=1 的配置返回数据库连接，默认 SQLite。"""
+    cfg = _load_active_config()
+    db_type = (cfg.get("db_type") or "sqlite").lower()
+    if db_type == "mysql":
+        return _connect_mysql(cfg)
+    return _connect_sqlite(cfg)
+
+
 def init_db():
-    with get_connection() as conn:
+    with get_meta_connection() as conn:
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS db_configs(
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL,
+                db_type TEXT NOT NULL,
+                host TEXT DEFAULT '',
+                port INTEGER DEFAULT 3306,
+                database_name TEXT DEFAULT '',
+                username TEXT DEFAULT '',
+                password TEXT DEFAULT '',
+                is_active INTEGER DEFAULT 0,
+                create_at TEXT NOT NULL DEFAULT(datetime('now'))
+            )
+            """
+        )
+        conn.commit()
+
         conn.execute(
             """
             CREATE TABLE IF NOT EXISTS users(
@@ -99,7 +332,6 @@ def init_db():
                 conn.execute("INSERT INTO modules(name, icon, url, parent_id, sort_order) VALUES(?,?,?,?,?)", ("模型引擎", "layui-icon-engine", "", 0, 2))
                 conn.execute("INSERT INTO modules(name, icon, url, parent_id, sort_order) VALUES(?,?,?,?,?)", ("模型配置", "layui-icon-set", "/admin/model/manage", 7, 1))
                 conn.execute("INSERT INTO modules(name, icon, url, parent_id, sort_order) VALUES(?,?,?,?,?)", ("数字员工", "layui-icon-user", "", 0, 3))
-                conn.execute("INSERT INTO modules(name, icon, url, parent_id, sort_order) VALUES(?,?,?,?,?)", ("员工管理", "layui-icon-group", "", 9, 1))
                 conn.execute("INSERT INTO modules(name, icon, url, parent_id, sort_order) VALUES(?,?,?,?,?)", ("瞭望管理", "layui-icon-tabs", "", 0, 4))
                 conn.execute("INSERT INTO modules(name, icon, url, parent_id, sort_order) VALUES(?,?,?,?,?)", ("瞭望源管理", "layui-icon-link", "/admin/watch/source", 11, 1))
                 conn.execute("INSERT INTO modules(name, icon, url, parent_id, sort_order) VALUES(?,?,?,?,?)", ("采集任务", "layui-icon-log", "/admin/watch/collect", 11, 2))
@@ -108,8 +340,7 @@ def init_db():
                 conn.execute("INSERT INTO modules(name, icon, url, parent_id, sort_order) VALUES(?,?,?,?,?)", ("数智大屏", "layui-icon-chart-screen", "", 0, 6))
                 conn.execute("INSERT INTO modules(name, icon, url, parent_id, sort_order) VALUES(?,?,?,?,?)", ("大屏展示", "layui-icon-template-1", "", 16, 1))
                 conn.execute("INSERT INTO modules(name, icon, url, parent_id, sort_order) VALUES(?,?,?,?,?)", ("系统设置", "layui-icon-set", "", 0, 7))
-                conn.execute("INSERT INTO modules(name, icon, url, parent_id, sort_order) VALUES(?,?,?,?,?)", ("系统参数", "layui-icon-set-fill", "", 18, 1))
-                conn.execute("INSERT INTO modules(name, icon, url, parent_id, sort_order) VALUES(?,?,?,?,?)", ("系统统计", "layui-icon-chart", "", 18, 2))
+                conn.execute("INSERT INTO modules(name, icon, url, parent_id, sort_order) VALUES(?,?,?,?,?)", ("系统参数", "layui-icon-set-fill", "/admin/db/config", 18, 1))
                 # 任务六：接口管理模块
                 conn.execute("INSERT INTO modules(name, icon, url, parent_id, sort_order) VALUES(?,?,?,?,?)", ("接口管理", "layui-icon-list", "", 0, 8))
                 conn.execute("INSERT INTO modules(name, icon, url, parent_id, sort_order) VALUES(?,?,?,?,?)", ("接口列表", "layui-icon-template-1", "/admin/api/manage", 20, 1))
@@ -121,7 +352,7 @@ def init_db():
 
         # 确保瞭望管理模块的 URL 正确
         try:
-            with get_connection() as conn:
+            with get_meta_connection() as conn:
                 conn.execute("UPDATE modules SET url = '/admin/watch/source' WHERE name = '瞭望源管理' AND (url = '' OR url IS NULL)")
                 conn.execute("UPDATE modules SET url = '/admin/watch/collect' WHERE name = '采集任务' AND (url = '' OR url IS NULL)")
                 conn.execute("UPDATE modules SET url = '/admin/watch/data' WHERE name = '数据管理' AND (url = '' OR url IS NULL)")
@@ -131,7 +362,7 @@ def init_db():
 
         # 确保接口管理模块的内容存在
         try:
-            with get_connection() as conn:
+            with get_meta_connection() as conn:
                 conn.execute("UPDATE modules SET url = '/admin/api/manage' WHERE name = '接口列表' AND (url = '' OR url IS NULL)")
                 conn.commit()
         except Exception:
@@ -139,7 +370,7 @@ def init_db():
 
         # 确保接口管理模块存在 (已存在数据库的情况)
         try:
-            with get_connection() as conn:
+            with get_meta_connection() as conn:
                 existing = conn.execute("SELECT id FROM modules WHERE name = '接口管理'").fetchone()
                 if not existing:
                     conn.execute("INSERT INTO modules(name, icon, url, parent_id, sort_order) VALUES(?,?,?,?,?)", ("接口管理", "layui-icon-list", "", 0, 8))
@@ -151,7 +382,7 @@ def init_db():
 
         # 确保数字员工模块存在 (已存在数据库的情况)
         try:
-            with get_connection() as conn:
+            with get_meta_connection() as conn:
                 existing = conn.execute("SELECT id FROM modules WHERE name = '员工配置'").fetchone()
                 if not existing:
                     # 检查父级"数字员工"是否存在，不存在则创建
@@ -168,21 +399,21 @@ def init_db():
 
         # 确保数字员工模块的 URL 正确 (针对已存在但 URL 为空的情况)
         try:
-            with get_connection() as conn:
+            with get_meta_connection() as conn:
                 conn.execute("UPDATE modules SET url = '/admin/employee/manage' WHERE name = '员工配置' AND (url = '' OR url IS NULL)")
                 conn.commit()
         except Exception:
             pass
 
         try:
-            with get_connection() as conn:
+            with get_meta_connection() as conn:
                 conn.execute("UPDATE modules SET url = '/screen/dashboard', icon = 'fa-chart-line' WHERE name = '大屏展示' AND (url = '' OR url IS NULL)")
                 conn.commit()
         except Exception:
             pass
 
         try:
-            with get_connection() as conn:
+            with get_meta_connection() as conn:
                 existing = conn.execute("SELECT id FROM modules WHERE name = '大屏展示'").fetchone()
                 if not existing:
                     parent = conn.execute("SELECT id FROM modules WHERE name = '数智大屏'").fetchone()
@@ -198,7 +429,7 @@ def init_db():
 
         # 确保自动化管理模块存在
         try:
-            with get_connection() as conn:
+            with get_meta_connection() as conn:
                 # 检查并添加自动化管理菜单（在瞭望管理下）
                 watch_parent = conn.execute("SELECT id FROM modules WHERE name = '瞭望管理'").fetchone()
                 if watch_parent:
@@ -267,7 +498,7 @@ def init_db():
 
         # 确保超级管理员拥有所有模块权限
         try:
-            with get_connection() as conn:
+            with get_meta_connection() as conn:
                 role = conn.execute("SELECT id FROM roles WHERE name = ?", ("超级管理员",)).fetchone()
                 if role:
                     role_id = role["id"]
@@ -965,6 +1196,60 @@ def init_db():
                     exists = conn.execute("SELECT id FROM role_permissions WHERE role_id = ? AND module_id = ?", (role_id, m["id"])).fetchone()
                     if not exists:
                         conn.execute("INSERT INTO role_permissions(role_id, module_id) VALUES(?,?)", (role_id, m["id"]))
+            conn.commit()
+        except Exception:
+            pass
+
+        try:
+            conn.execute(
+                "UPDATE modules SET url = '/admin/db/config' WHERE name = '系统参数' AND (url = '' OR url IS NULL)"
+            )
+            settings = conn.execute("SELECT id FROM modules WHERE name = '系统设置' AND parent_id = 0").fetchone()
+            if settings:
+                exists = conn.execute(
+                    "SELECT id FROM modules WHERE name = '数据库配置' AND parent_id = ?",
+                    (settings["id"],),
+                ).fetchone()
+                if not exists:
+                    conn.execute(
+                        "INSERT INTO modules(name, icon, url, parent_id, sort_order) VALUES(?,?,?,?,?)",
+                        ("数据库配置", "layui-icon-template-1", "/admin/db/config", settings["id"], 1),
+                    )
+            conn.commit()
+        except Exception:
+            pass
+
+        try:
+            conn.execute(
+                "UPDATE db_configs SET database_name = ? WHERE database_name IN (?, ?)",
+                (DEFAULT_SQLITE_REL_PATH, "database/app.db", "database\\app.db"),
+            )
+            conn.commit()
+        except Exception:
+            pass
+
+        try:
+            count = conn.execute("SELECT COUNT(*) AS cnt FROM db_configs").fetchone()["cnt"]
+            if not count:
+                default_path = os.path.relpath(DB_PATH, _project_root()).replace("\\", "/")
+                conn.execute(
+                    """INSERT INTO db_configs(name, db_type, host, port, database_name, username, password, is_active)
+                       VALUES(?,?,?,?,?,?,?,?)""",
+                    ("默认 SQLite", "sqlite", "", 0, default_path, "", "", 1),
+                )
+                conn.commit()
+        except Exception:
+            pass
+
+        # 移除无用菜单：员工管理（空链接重复项）、系统设计/系统统计（无实际页面）
+        try:
+            unused_names = ("员工管理", "系统设计", "系统统计")
+            for name in unused_names:
+                rows = conn.execute("SELECT id FROM modules WHERE name = ?", (name,)).fetchall()
+                for row in rows:
+                    mid = row["id"]
+                    conn.execute("DELETE FROM role_permissions WHERE module_id = ?", (mid,))
+                    conn.execute("DELETE FROM modules WHERE id = ?", (mid,))
             conn.commit()
         except Exception:
             pass

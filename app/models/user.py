@@ -2,11 +2,35 @@ import hashlib
 import secrets
 import sqlite3
 
-from app.models.db import get_connection
+from app.models.db import get_connection, row_to_dict
 
 def _hash_password(password: str, salt: bytes) -> str:
     dk = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt, 100_000)
     return dk.hex()
+
+
+def _text_field(val):
+    if val is None:
+        return ""
+    if isinstance(val, bytes):
+        return val.decode("utf-8")
+    return str(val)
+
+
+def _user_from_row(row):
+    if not row:
+        return None
+    d = row_to_dict(row)
+    if not d:
+        return None
+    try:
+        d["status"] = int(d.get("status") if d.get("status") is not None else 0)
+    except (TypeError, ValueError):
+        d["status"] = 0
+    d["salt"] = _text_field(d.get("salt"))
+    d["password_hash"] = _text_field(d.get("password_hash"))
+    return d
+
 
 class UserRepository:
     @staticmethod
@@ -37,22 +61,11 @@ class UserRepository:
             return None
         
         with get_connection() as conn:
-            conn.row_factory = sqlite3.Row
             row = conn.execute(
                 "SELECT id, username, password_hash, salt, role, status FROM users WHERE username = ?",
-                (username,)
+                (username,),
             ).fetchone()
-            
-            if row:
-                return {
-                    "id": row["id"],
-                    "username": row["username"],
-                    "password_hash": row["password_hash"],
-                    "salt": row["salt"],
-                    "role": row["role"],
-                    "status": row["status"]
-                }
-        return None
+            return _user_from_row(row)
 
     @staticmethod
     def get_user_by_id(user_id: int) -> dict | None:
@@ -60,22 +73,11 @@ class UserRepository:
             return None
         
         with get_connection() as conn:
-            conn.row_factory = sqlite3.Row
             row = conn.execute(
                 "SELECT id, username, password_hash, salt, role, status FROM users WHERE id = ?",
-                (user_id,)
+                (user_id,),
             ).fetchone()
-            
-            if row:
-                return {
-                    "id": row["id"],
-                    "username": row["username"],
-                    "password_hash": row["password_hash"],
-                    "salt": row["salt"],
-                    "role": row["role"],
-                    "status": row["status"]
-                }
-        return None
+            return _user_from_row(row)
 
     @staticmethod
     def verify_user(username: str, password: str) -> bool:
@@ -83,7 +85,7 @@ class UserRepository:
         if not user:
             return False
         
-        if user.get("status") != 1:
+        if int(user.get("status") or 0) != 1:
             return False
         
         try:

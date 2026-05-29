@@ -1,4 +1,16 @@
-from app.models.db import get_connection
+from app.models.db import as_int, get_connection, row_to_dict
+
+
+def _module_from_row(row):
+    d = row_to_dict(row)
+    if not d:
+        return None
+    d["id"] = as_int(d.get("id"))
+    d["parent_id"] = as_int(d.get("parent_id"))
+    d["sort_order"] = as_int(d.get("sort_order"))
+    d["status"] = as_int(d.get("status"), 1)
+    return d
+
 
 class ModuleRepository:
     @staticmethod
@@ -7,23 +19,19 @@ class ModuleRepository:
             rows = conn.execute(
                 "SELECT id, name, icon, url, parent_id, sort_order, status, create_at FROM modules ORDER BY sort_order"
             ).fetchall()
-            result = []
-            for r in rows:
-                result.append({
-                    "id": r["id"], "name": r["name"], "icon": r["icon"],
-                    "url": r["url"], "parent_id": r["parent_id"],
-                    "sort_order": r["sort_order"], "status": r["status"],
-                    "create_at": r["create_at"]
-                })
-            return result
+            return [m for m in (_module_from_row(r) for r in rows) if m]
 
     @staticmethod
     def get_module_tree() -> list:
         modules = ModuleRepository.get_all_modules()
         parents = [m for m in modules if m["parent_id"] == 0 and m["status"] == 1]
+        parents.sort(key=lambda x: x["sort_order"])
         result = []
         for p in parents:
-            children = [c for c in modules if c["parent_id"] == p["id"] and c["status"] == 1]
+            children = [
+                c for c in modules
+                if c["parent_id"] == p["id"] and c["status"] == 1
+            ]
             children.sort(key=lambda x: x["sort_order"])
             result.append({
                 "id": p["id"], "name": p["name"], "icon": p["icon"],
@@ -37,7 +45,7 @@ class ModuleRepository:
             rows = conn.execute(
                 "SELECT module_id FROM role_permissions WHERE role_id = ?", (role_id,)
             ).fetchall()
-            return [r["module_id"] for r in rows]
+            return [as_int(r["module_id"]) for r in rows]
 
     @staticmethod
     def add_module(name: str, icon: str, url: str, parent_id: int, sort_order: int) -> bool:
@@ -82,4 +90,4 @@ class ModuleRepository:
             rows = conn.execute(
                 "SELECT id, name FROM modules WHERE parent_id = 0 AND status = 1 ORDER BY sort_order"
             ).fetchall()
-            return [{"id": r["id"], "name": r["name"]} for r in rows]
+            return [{"id": as_int(r["id"]), "name": r["name"]} for r in rows]

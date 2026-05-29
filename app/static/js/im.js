@@ -420,6 +420,11 @@
         var peerId = parseInt(state.currentChat.id, 10);
         var myId = parseInt(state.currentChat.myId || state.myUserId, 10);
         if (!myId || !peerId) return false;
+        if (Number(msg.sender_id) === 0) {
+            return msg.receiver_type === 'user' && (
+                Number(msg.receiver_id) === myId || Number(msg.receiver_id) === peerId
+            );
+        }
         return msg.receiver_type === 'user' && (
             (Number(msg.sender_id) === myId && Number(msg.receiver_id) === peerId) ||
             (Number(msg.sender_id) === peerId && Number(msg.receiver_id) === myId)
@@ -501,6 +506,9 @@
                     escapeHtml(data.title || '毒鸡汤') + '</div><p>' +
                     escapeHtml(data.quote || '') + '</p></div>';
             }
+            if (data._im_card === 'music') {
+                return renderMusicCard(data);
+            }
         } catch (e) { /* not json */ }
         return '';
     }
@@ -523,6 +531,22 @@
             '风力 ' + escapeHtml(data.wind || '') + '<br>' +
             '湿度 ' + escapeHtml(data.humidity || '') + '<br>' +
             '空气 ' + escapeHtml(data.air || '') +
+            '</div></div></div>';
+    }
+
+    function renderMusicCard(data) {
+        var cover = data.cover || '';
+        var coverHtml = cover ? '<img src="' + escapeHtml(cover) + '" style="width:80px;height:80px;border-radius:8px;object-fit:cover;" onerror="this.style.display=\'none\'">' : '';
+        var song = escapeHtml(data.song || '未知歌曲');
+        var singer = escapeHtml(data.singer || '未知歌手');
+        var musicUrl = escapeHtml(data.music_url || '#');
+        return '<div class="im-music-card">' +
+            '<div class="im-music-inner">' +
+            coverHtml +
+            '<div class="im-music-info">' +
+            '<div class="im-music-song">' + song + '</div>' +
+            '<div class="im-music-singer">🎤 ' + singer + '</div>' +
+            '<a class="im-music-btn" href="' + musicUrl + '" target="_blank">▶ 立即收听</a>' +
             '</div></div></div>';
     }
 

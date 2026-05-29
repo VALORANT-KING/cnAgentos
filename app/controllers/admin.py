@@ -9,6 +9,7 @@ from app.models.watch import WatchRepository
 from app.models.api_service import ApiServiceRepository
 from app.models.digital_employee import DigitalEmployeeRepository
 from app.models.auto_task import AutoTaskRepository
+from app.models.db_config import DbConfigRepository
 from app.scheduler import start_task, stop_task, execute_auto_task
 import requests
 import urllib3
@@ -46,7 +47,7 @@ class AdminLoginHandler(tornado.web.RequestHandler):
         if not user or user.get("role") != "admin":
             return self.render("admin_login.html", error="无管理员权限或账号不存在")
 
-        if user.get("status") != 1:
+        if int(user.get("status") or 0) != 1:
             return self.render("admin_login.html", error="账号已被禁用，请联系系统管理员")
 
         if not UserRepository.verify_user(username, password):
@@ -72,6 +73,30 @@ class AdminHomeHandler(AdminBaseHandler):
     @tornado.web.authenticated
     def get(self):
         self.render("admin_home.html")
+
+
+class AdminHomeStatsHandler(AdminBaseHandler):
+    @tornado.web.authenticated
+    def get(self):
+        from app.models.db import get_connection
+        try:
+            with get_connection() as conn:
+                total_users = conn.execute("SELECT COUNT(*) AS cnt FROM users").fetchone()["cnt"]
+                total_employees = conn.execute("SELECT COUNT(*) AS cnt FROM digital_employees").fetchone()["cnt"]
+                total_sources = conn.execute("SELECT COUNT(*) AS cnt FROM watch_sources").fetchone()["cnt"]
+                total_tasks = conn.execute("SELECT COUNT(*) AS cnt FROM auto_tasks").fetchone()["cnt"]
+            self.write({
+                "code": 0,
+                "data": {
+                    "total_users": total_users,
+                    "total_employees": total_employees,
+                    "total_sources": total_sources,
+                    "total_tasks": total_tasks,
+                },
+            })
+        except Exception as e:
+            self.write({"code": 1, "msg": str(e)})
+
 
 class AdminUserManageHandler(AdminBaseHandler):
     @tornado.web.authenticated
@@ -536,10 +561,16 @@ class AdminWatchSourceDeleteHandler(AdminBaseHandler):
 class AdminWatchCollectHandler(AdminBaseHandler):
     @tornado.web.authenticated
     def get(self):
-        sources = WatchRepository.get_all_sources()
-        # 只显示启用的源
-        active_sources = [s for s in sources if s['status'] == 1]
-        self.render("admin_watch_collect.html", sources=active_sources)
+        self.render("admin_watch_collect.html")
+
+
+class AdminWatchCollectSourcesHandler(AdminBaseHandler):
+    """采集页专用：返回与瞭望源管理一致的启用源列表。"""
+
+    @tornado.web.authenticated
+    def get(self):
+        sources = WatchRepository.get_active_sources()
+        self.write({"code": 0, "msg": "", "count": len(sources), "data": sources})
 
 class AdminWatchDoCollectHandler(AdminBaseHandler):
     @tornado.web.authenticated
@@ -605,13 +636,10 @@ class AdminWatchDoCollectHandler(AdminBaseHandler):
                         print(f"DEBUG: Request failed: {e}")
                 
                 if collected_items:
-                    # 记录入库前后的数量差
-                    from app.models.db import get_connection
-                    with get_connection() as conn:
-                        before = conn.execute("SELECT COUNT(*) FROM watch_data").fetchone()[0]
-                        WatchRepository.save_collected_data(source['id'], keyword, collected_items)
-                        after = conn.execute("SELECT COUNT(*) FROM watch_data").fetchone()[0]
-                        total_saved += (after - before)
+                    saved = WatchRepository.save_collected_data(
+                        source["id"], keyword, collected_items
+                    )
+                    total_saved += saved
                     
             msg = f"采集完成：解析到 {total_parsed} 条数据"
             if total_saved > 0:
@@ -1437,4 +1465,127 @@ class AdminAutoRunNowHandler(AdminBaseHandler):
             import traceback
             traceback.print_exc()
             return self.write({"code": 1, "msg": f"执行失败: {str(e)}"})
+
+
+class AdminDbConfigHandler(AdminBaseHandler):
+    @tornado.web.authenticated
+    def get(self):
+        self.render("admin_db_config.html")
+
+
+class AdminDbConfigListHandler(AdminBaseHandler):
+    @tornado.web.authenticated
+    def get(self):
+        data = DbConfigRepository.get_list()
+        self.write({"code": 0, "msg": "", "count": len(data), "data": data})
+
+
+class AdminDbConfigAddHandler(AdminBaseHandler):
+    @tornado.web.authenticated
+    def post(self):
+        name = self.get_body_argument("name", "").strip()
+        db_type = self.get_body_argument("db_type", "sqlite").strip()
+        host = self.get_body_argument("host", "").strip()
+        port = int(self.get_body_argument("port", 3306) or 3306)
+        database_name = self.get_body_argument("database_name", "").strip()
+        username = self.get_body_argument("username", "").strip()
+        password = self.get_body_argument("password", "")
+
+        if not name:
+            return self.write({"code": 1, "msg": "配置名称不能为空"})
+        if db_type == "mysql" and not database_name:
+            return self.write({"code": 1, "msg": "MySQL 数据库名不能为空"})
+
+        DbConfigRepository.add(name, db_type, host, port, database_name, username, password)
+        self.write({"code": 0, "msg": "添加成功"})
+
+
+class AdminDbConfigUpdateHandler(AdminBaseHandler):
+    @tornado.web.authenticated
+    def post(self):
+        config_id = int(self.get_body_argument("id", 0))
+        name = self.get_body_argument("name", "").strip()
+        db_type = self.get_body_argument("db_type", "sqlite").strip()
+        host = self.get_body_argument("host", "").strip()
+        port = int(self.get_body_argument("port", 3306) or 3306)
+        database_name = self.get_body_argument("database_name", "").strip()
+        username = self.get_body_argument("username", "").strip()
+        password = self.get_body_argument("password", "")
+
+        if not config_id or not name:
+            return self.write({"code": 1, "msg": "参数错误"})
+        if db_type == "mysql" and not database_name:
+            return self.write({"code": 1, "msg": "MySQL 数据库名不能为空"})
+
+        if not DbConfigRepository.update(config_id, name, db_type, host, port, database_name, username, password):
+            return self.write({"code": 1, "msg": "配置不存在"})
+        self.write({"code": 0, "msg": "更新成功"})
+
+
+class AdminDbConfigSwitchHandler(AdminBaseHandler):
+    @tornado.web.authenticated
+    def post(self):
+        config_id = int(self.get_body_argument("id", 0))
+        if not config_id:
+            return self.write({"code": 1, "msg": "参数错误"})
+        ok, msg = DbConfigRepository.switch(config_id)
+        self.write({"code": 0 if ok else 1, "msg": msg})
+
+
+class AdminDbConfigTestHandler(AdminBaseHandler):
+    @tornado.web.authenticated
+    def post(self):
+        if self.request.headers.get("Content-Type", "").startswith("application/json"):
+            try:
+                payload = json.loads(self.request.body.decode("utf-8") or "{}")
+            except Exception:
+                payload = {}
+            ok, msg = DbConfigRepository.test_config(payload=payload)
+            return self.write({"code": 0 if ok else 1, "msg": msg})
+
+        config_id = int(self.get_body_argument("id", 0) or 0)
+        if config_id:
+            ok, msg = DbConfigRepository.test_config(config_id=config_id)
+        else:
+            ok, msg = DbConfigRepository.test_config(payload={
+                "db_type": self.get_body_argument("db_type", "sqlite"),
+                "host": self.get_body_argument("host", ""),
+                "port": int(self.get_body_argument("port", 3306) or 3306),
+                "database_name": self.get_body_argument("database_name", ""),
+                "username": self.get_body_argument("username", ""),
+                "password": self.get_body_argument("password", ""),
+            })
+        self.write({"code": 0 if ok else 1, "msg": msg})
+
+
+class AdminDbConfigDeleteHandler(AdminBaseHandler):
+    @tornado.web.authenticated
+    def post(self):
+        config_id = int(self.get_body_argument("id", 0))
+        if not config_id:
+            return self.write({"code": 1, "msg": "参数错误"})
+        ok, msg = DbConfigRepository.delete(config_id)
+        self.write({"code": 0 if ok else 1, "msg": msg})
+
+
+class AdminDbConfigSyncHandler(AdminBaseHandler):
+    """从 SQLite 全量同步到指定 MySQL 配置（初始化与 SQLite 一致）。"""
+
+    @tornado.web.authenticated
+    def post(self):
+        config_id = int(self.get_body_argument("id", 0))
+        force = self.get_body_argument("force", "0") in ("1", "true", "True")
+        if not config_id:
+            return self.write({"code": 1, "msg": "参数错误"})
+        target = DbConfigRepository.get_by_id(config_id)
+        if not target:
+            return self.write({"code": 1, "msg": "配置不存在"})
+        if (target.get("db_type") or "").lower() != "mysql":
+            return self.write({"code": 1, "msg": "仅 MySQL 配置支持从 SQLite 同步"})
+        from app.models.db_sync import ensure_mysql_initialized
+        try:
+            ok, msg = ensure_mysql_initialized(target, force=force)
+        except Exception as e:
+            ok, msg = False, "同步异常: " + str(e)
+        self.write({"code": 0 if ok else 1, "msg": msg})
 

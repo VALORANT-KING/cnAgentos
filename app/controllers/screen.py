@@ -243,6 +243,15 @@ class ScreenWordDetailHandler(BaseHandler):
             self.write({"code": 1, "msg": f"查询异常: {str(e)}", "data": []})
 
 
+def _normalize_day_key(day_val):
+    """将 DATE() 结果统一为 YYYY-MM-DD 字符串，兼容 SQLite 与 MySQL。"""
+    if day_val is None:
+        return None
+    if hasattr(day_val, "isoformat"):
+        return day_val.isoformat()
+    return str(day_val)[:10]
+
+
 class ScreenStatsHandler(BaseHandler):
     """统计 Handler — 返回平台关键指标与趋势数据。
     
@@ -251,6 +260,7 @@ class ScreenStatsHandler(BaseHandler):
     """
     def get(self):
         try:
+            cutoff = (datetime.now() - timedelta(days=7)).strftime("%Y-%m-%d %H:%M:%S")
             with get_connection() as conn:
                 total_users = conn.execute("SELECT COUNT(*) as cnt FROM users").fetchone()["cnt"]
 
@@ -261,9 +271,10 @@ class ScreenStatsHandler(BaseHandler):
                 rows = conn.execute(
                     """SELECT DATE(create_at) AS day, COUNT(*) AS cnt
                        FROM watch_data
-                       WHERE create_at >= date('now', '-7 days')
+                       WHERE create_at >= ?
                        GROUP BY DATE(create_at)
-                       ORDER BY day"""
+                       ORDER BY day""",
+                    (cutoff,),
                 ).fetchall()
                 trend_dates = []
                 trend_values = []
@@ -271,18 +282,19 @@ class ScreenStatsHandler(BaseHandler):
                 today = datetime.now().date()
                 existing = {}
                 for r in rows:
-                    existing[r["day"]] = r["cnt"]
+                    existing[_normalize_day_key(r["day"])] = r["cnt"]
 
                 msg_rows = conn.execute(
                     """SELECT DATE(create_at) AS day, COUNT(*) AS cnt
                        FROM im_messages
-                       WHERE sender_id != 0 AND create_at >= date('now', '-7 days')
+                       WHERE sender_id != 0 AND create_at >= ?
                        GROUP BY DATE(create_at)
-                       ORDER BY day"""
+                       ORDER BY day""",
+                    (cutoff,),
                 ).fetchall()
                 msg_existing = {}
                 for r in msg_rows:
-                    msg_existing[r["day"]] = r["cnt"]
+                    msg_existing[_normalize_day_key(r["day"])] = r["cnt"]
 
                 for i in range(6, -1, -1):
                     d = (today - timedelta(days=i)).isoformat()

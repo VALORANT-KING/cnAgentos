@@ -18,10 +18,27 @@
         }
     }
 
+    function hideChartLoading(domId) {
+        var dom = document.getElementById(domId);
+        if (!dom) return;
+        var overlay = dom.querySelector('.loading-overlay');
+        if (overlay) overlay.style.display = 'none';
+    }
+
+    function showChartMessage(domId, msg) {
+        var dom = document.getElementById(domId);
+        if (!dom) return;
+        var overlay = dom.querySelector('.loading-overlay');
+        if (!overlay) return;
+        overlay.style.display = 'block';
+        overlay.innerHTML = '<span style="color:#6a8099;font-size:13px;">' + escapeHtml(msg) + '</span>';
+    }
+
     function initOrReuse(key, domId) {
         disposeChart(key);
         var dom = document.getElementById(domId);
         if (!dom) return null;
+        hideChartLoading(domId);
         var inst = echarts.init(dom);
         charts[key] = inst;
         return inst;
@@ -191,7 +208,11 @@
 
     function loadWordcloud() {
         ajaxGet('/api/screen/wordcloud', function(res) {
-            if (res.code !== 0 || !res.data || !res.data.length) return;
+            if (res.code !== 0 || !res.data || !res.data.length) {
+                hideChartLoading('wordcloud');
+                showChartMessage('wordcloud', res.msg || '暂无词云数据');
+                return;
+            }
 
             var wcInst = initOrReuse('wordcloud', 'wordcloud');
             if (!wcInst) return;
@@ -439,7 +460,11 @@
 
     function loadEarthData() {
         ajaxGet('/api/screen/earth-data', function(res) {
-            if (res.code !== 0 || !res.data) return;
+            if (res.code !== 0 || !res.data) {
+                hideChartLoading('earth3d');
+                showChartMessage('earth3d', res.msg || '地球数据加载失败');
+                return;
+            }
             cachedEarthData = res.data;
             loadWorldMap(function() {
                 renderEarth3D(cachedEarthData);
@@ -547,6 +572,7 @@
                 zlevel: 1
             }]
         }, true);
+        hideChartLoading('earth3d');
     }
 
     function loadAnalyze(days, force) {
@@ -725,9 +751,41 @@
 
     // === 手势识别相关代码 ===
     var gestureRunning = false;
+    var commandModeActive = false;
     var gesturePreviewCtx = null;
     var gesturePreviewAnim = null;
     var gestureLoadCheckTimer = null;
+
+    function setCommandMode(active) {
+        commandModeActive = !!active;
+        if (window.HandGesture && window.HandGesture.setCommandModeEnabled) {
+            window.HandGesture.setCommandModeEnabled(commandModeActive);
+        }
+        updateGestureModeStatus();
+    }
+
+    function updateGestureModeStatus() {
+        var status = document.getElementById('gestureStatus');
+        var btn = document.getElementById('gestureToggleBtn');
+        var panel = document.getElementById('gestureControlPanel');
+        if (!status) return;
+
+        if (!gestureRunning) {
+            status.textContent = '等待启用...';
+            if (panel) panel.classList.remove('command-mode-active');
+            return;
+        }
+
+        if (commandModeActive) {
+            status.textContent = '指令控制中 · 做完手势请松手';
+            if (panel) panel.classList.add('command-mode-active');
+            if (btn) btn.title = '指令控制已激活';
+        } else {
+            status.textContent = '待命 · 👍 保持约 1 秒激活';
+            if (panel) panel.classList.remove('command-mode-active');
+            if (btn) btn.title = '摄像头已开启，等待激活指令控制';
+        }
+    }
 
     // 检查手势模块是否已加载
     function checkGestureModule(callback) {
@@ -801,6 +859,7 @@
                 window.HandGesture.stop();
             }
             gestureRunning = false;
+            setCommandMode(false);
             btn.classList.remove('active');
             btn.innerHTML = '<i class="fas fa-play-circle"></i> 启用';
             content.style.display = 'none';
@@ -820,11 +879,12 @@
         }).then(function() {
             console.log('HandGesture started successfully');
             gestureRunning = true;
+            setCommandMode(false);
             btn.disabled = false;
             btn.classList.add('active');
             btn.innerHTML = '<i class="fas fa-stop-circle"></i> 停用';
             content.style.display = 'block';
-            status.textContent = '摄像头已启动，等待手势...';
+            updateGestureModeStatus();
 
             if (preview && window.HandGesture.getCanvas) {
                 var sourceCanvas = window.HandGesture.getCanvas();
@@ -835,14 +895,15 @@
             }
 
             window.HandGesture.on('gesture', handleGesture);
+            window.HandGesture.on('gesture_hold', handleGestureHold);
             window.HandGesture.on('started', function() {
-                status.textContent = '手势识别已就绪';
+                updateGestureModeStatus();
             });
             window.HandGesture.on('stopped', function() {
                 status.textContent = '已停止';
             });
 
-            showToast('手势控制已启动，请对着摄像头做手势');
+            showToast('摄像头已开启，👍 保持约 1 秒即可激活指令控制');
         }).catch(function(err) {
             console.error('手势启动失败:', err);
             btn.disabled = false;
@@ -893,19 +954,38 @@
         }
     }
 
-    // 处理手势事件
-    function handleGesture(gestureName) {
-        var status = document.getElementById('gestureStatus');
-        var panel = document.getElementById('gestureControlPanel');
-        
-        // 添加动画效果
-        if (panel) {
-            panel.classList.remove('gesture-active');
-            void panel.offsetWidth; // 触发重绘
-            panel.classList.add('gesture-active');
+    // 待命模式：长按激活指令控制
+    function handleGestureHold(gestureName) {
+        if (gestureName !== 'thumbs_up') {
+            showToast('请先 👍 竖起大拇指并保持约 1 秒');
+            updateGestureModeStatus();
+            return;
         }
 
-        // 手势名称映射
+        setCommandMode(true);
+        pulseGesturePanel();
+        showToast('指令控制已激活，做完手势请松手');
+        updateGestureModeStatus();
+    }
+
+    // 处理手势事件（仅指令模式生效）
+    function handleGesture(gestureName) {
+        if (!commandModeActive) {
+            updateGestureModeStatus();
+            return;
+        }
+
+        if (gestureName === 'thumbs_down') {
+            setCommandMode(false);
+            pulseGesturePanel();
+            showToast('已退出指令控制，👍 可再次激活');
+            updateGestureModeStatus();
+            return;
+        }
+
+        pulseGesturePanel();
+
+        var status = document.getElementById('gestureStatus');
         var gestureMap = {
             'open_palm': '张开手掌',
             'closed_fist': '握拳',
@@ -919,42 +999,45 @@
 
         var displayName = gestureMap[gestureName] || gestureName;
         if (status) {
-            status.textContent = '识别到: ' + displayName;
+            status.textContent = '已识别: ' + displayName + ' · 请松手';
         }
 
-        // 执行对应操作
         switch (gestureName) {
             case 'open_palm':
-                // 张开手掌 → 刷新分析
-                showToast('手势: 张开手掌 → 刷新分析');
+                showToast('张开手掌 → 刷新分析');
                 refreshAnalyze();
                 break;
             case 'closed_fist':
-                // 握拳 → 切换图表类型
-                showToast('手势: 握拳 → 切换图表');
+                showToast('握拳 → 切换图表');
                 toggleChartType();
                 break;
             case 'point_up':
-                // 食指向上 → 切换为7天
-                showToast('手势: 食指向上 → 显示最近7天');
+                showToast('食指向上 → 最近 7 天');
                 switchDays(7);
                 break;
             case 'three_fingers':
-                // 三指伸直 → 刷新数据
-                showToast('手势: 三指伸直 → 刷新数据');
+                showToast('三指伸直 → 刷新数据');
                 refreshAll();
                 break;
             case 'thumbs_up':
-                // 点赞 → 切换为30天
-                showToast('手势: 点赞 → 显示最近30天');
+                showToast('点赞 → 最近 30 天');
                 switchDays(30);
                 break;
             case 'peace':
-                // 剪刀手 → 暂停/继续自动刷新
-                showToast('手势: 剪刀手 → 切换自动刷新');
+                showToast('剪刀手 → 切换自动刷新');
                 toggleAutoRefresh();
                 break;
         }
+
+        setTimeout(updateGestureModeStatus, 1200);
+    }
+
+    function pulseGesturePanel() {
+        var panel = document.getElementById('gestureControlPanel');
+        if (!panel) return;
+        panel.classList.remove('gesture-active');
+        void panel.offsetWidth;
+        panel.classList.add('gesture-active');
     }
 
     // 切换自动刷新

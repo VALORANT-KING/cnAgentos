@@ -1,4 +1,4 @@
-from app.models.db import get_connection
+from app.models.db import as_int, get_connection
 
 class RoleRepository:
     @staticmethod
@@ -54,7 +54,7 @@ class RoleRepository:
             rows = conn.execute(
                 "SELECT module_id FROM role_permissions WHERE role_id = ?", (role_id,)
             ).fetchall()
-            return [r["module_id"] for r in rows]
+            return [as_int(r["module_id"]) for r in rows]
 
     @staticmethod
     def save_role_permissions(role_id: int, module_ids: list) -> bool:

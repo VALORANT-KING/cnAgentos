@@ -5,10 +5,15 @@
 import os
 import sys
 
-# 将 local lib 目录加入 python 搜索路径，以便导入 openai 等库
-lib_path = os.path.join(os.path.dirname(__file__), "lib")
-if os.path.exists(lib_path) and lib_path not in sys.path:
-    sys.path.append(lib_path)
+# 项目根目录（相对路径解析为绝对路径，保证任意机器可运行）
+_root = os.path.dirname(os.path.abspath(__file__))
+if _root not in sys.path:
+    sys.path.insert(0, _root)
+
+# 使用项目 env 内嵌 Python 时，依赖已安装在 env/Lib/site-packages
+_site = os.path.join(_root, "env", "Lib", "site-packages")
+if os.path.isdir(_site) and _site not in sys.path:
+    sys.path.insert(0, _site)
 
 import tornado.ioloop
 import tornado.web
@@ -23,6 +28,7 @@ from app.controllers.admin import AdminLoginHandler
 from app.controllers.admin import AdminLogoutHandler
 from app.controllers.admin import AdminIndexHandler
 from app.controllers.admin import AdminHomeHandler
+from app.controllers.admin import AdminHomeStatsHandler
 from app.controllers.admin import AdminUserManageHandler
 from app.controllers.admin import AdminUserListHandler
 from app.controllers.admin import AdminUserAddHandler
@@ -57,6 +63,7 @@ from app.controllers.admin import AdminWatchSourceAddHandler
 from app.controllers.admin import AdminWatchSourceUpdateHandler
 from app.controllers.admin import AdminWatchSourceDeleteHandler
 from app.controllers.admin import AdminWatchCollectHandler
+from app.controllers.admin import AdminWatchCollectSourcesHandler
 from app.controllers.admin import AdminWatchDoCollectHandler
 from app.controllers.admin import AdminWatchDataHandler
 from app.controllers.admin import AdminWatchDataListHandler
@@ -108,6 +115,14 @@ from app.controllers.admin import AdminAutoDataHandler
 from app.controllers.admin import AdminAutoDataListHandler
 from app.controllers.admin import AdminAutoDataDeleteHandler
 from app.controllers.admin import AdminAutoRunNowHandler
+from app.controllers.admin import AdminDbConfigHandler
+from app.controllers.admin import AdminDbConfigListHandler
+from app.controllers.admin import AdminDbConfigAddHandler
+from app.controllers.admin import AdminDbConfigUpdateHandler
+from app.controllers.admin import AdminDbConfigSwitchHandler
+from app.controllers.admin import AdminDbConfigTestHandler
+from app.controllers.admin import AdminDbConfigDeleteHandler
+from app.controllers.admin import AdminDbConfigSyncHandler
 from app.scheduler import init_scheduler, shutdown_scheduler
 from app.controllers.chat import ChatIndexHandler
 from app.controllers.chat import ChatSessionListHandler
@@ -222,6 +237,7 @@ def make_app():
             (r"/admin/logout", AdminLogoutHandler),
             (r"/admin", AdminIndexHandler),
             (r"/admin/home", AdminHomeHandler),
+            (r"/admin/home/stats", AdminHomeStatsHandler),
             (r"/admin/menu", AdminMenuHandler),
             (r"/admin/user/manage", AdminUserManageHandler),
             (r"/admin/user/list", AdminUserListHandler),
@@ -256,6 +272,7 @@ def make_app():
             (r"/admin/watch/source/update", AdminWatchSourceUpdateHandler),
             (r"/admin/watch/source/delete", AdminWatchSourceDeleteHandler),
             (r"/admin/watch/collect", AdminWatchCollectHandler),
+            (r"/admin/watch/collect/sources", AdminWatchCollectSourcesHandler),
             (r"/admin/watch/docollect", AdminWatchDoCollectHandler),
             (r"/admin/watch/data", AdminWatchDataHandler),
             (r"/admin/watch/data/list", AdminWatchDataListHandler),
@@ -307,6 +324,14 @@ def make_app():
             (r"/admin/auto/data/list", AdminAutoDataListHandler),
             (r"/admin/auto/data/delete", AdminAutoDataDeleteHandler),
             (r"/admin/auto/run", AdminAutoRunNowHandler),
+            (r"/admin/db/config", AdminDbConfigHandler),
+            (r"/admin/db/config/list", AdminDbConfigListHandler),
+            (r"/admin/db/config/add", AdminDbConfigAddHandler),
+            (r"/admin/db/config/update", AdminDbConfigUpdateHandler),
+            (r"/admin/db/config/switch", AdminDbConfigSwitchHandler),
+            (r"/admin/db/config/test", AdminDbConfigTestHandler),
+            (r"/admin/db/config/delete", AdminDbConfigDeleteHandler),
+            (r"/admin/db/config/sync", AdminDbConfigSyncHandler),
             (r"/chat", ChatIndexHandler),
             (r"/api/chat/sessions", ChatSessionListHandler),
             (r"/api/chat/session/add", ChatSessionAddHandler),
@@ -357,6 +382,7 @@ if __name__ == "__main__":
     init_scheduler()
 
     print("====== Server 启动成功 ======= 端口：10086 (局域网可访问) =====", flush=True)
+    print("官方网站首页：http://127.0.0.1:10086/", flush=True)
     print("用户登录地址：http://127.0.0.1:10086/auth/login", flush=True)
     print("用户首页：http://127.0.0.1:10086/home", flush=True)
     print("智能聊天：http://127.0.0.1:10086/im", flush=True)

@@ -634,6 +634,13 @@ html, body {
         width: 240px;
         padding: 10px;
     }
+    .gesture-control-panel {
+        top: auto;
+        bottom: 8px;
+        left: 8px;
+        right: auto;
+        width: 240px;
+    }
     .floating-card h4 {
         font-size: 12px;
     }
@@ -657,7 +664,7 @@ html, body {
 .gesture-control-panel {
     position: fixed;
     top: 80px;
-    right: 20px;
+    right: calc(280px + 24px + 12px);
     width: 280px;
     background: rgba(10, 20, 40, 0.95);
     border: 1px solid rgba(0, 150, 255, 0.3);
@@ -740,6 +747,36 @@ html, body {
     color: #00dcff;
     font-size: 12px;
     text-align: center;
+    line-height: 1.4;
+}
+
+.gesture-control-panel.command-mode-active {
+    border-color: rgba(0, 220, 120, 0.45);
+    box-shadow: 0 10px 40px rgba(0, 180, 100, 0.15);
+}
+
+.gesture-control-panel.command-mode-active .gesture-status {
+    color: #00e878;
+}
+
+.gesture-guide-divider {
+    margin: 4px 0 2px;
+    padding-top: 8px;
+    border-top: 1px dashed rgba(0, 150, 255, 0.2);
+    font-size: 11px;
+    color: #5a7494;
+    text-align: center;
+    line-height: 1.4;
+}
+
+.gesture-item-highlight {
+    background: rgba(0, 120, 255, 0.12);
+    border-color: rgba(0, 150, 255, 0.25);
+}
+
+.gesture-item-highlight .gesture-action {
+    color: #00dcff;
+    background: rgba(0, 180, 255, 0.18);
 }
 
 .gesture-guide {

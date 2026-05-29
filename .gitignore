@@ -7,8 +7,6 @@ __pycache__/
 *.so
 
 # Distribution / packaging
-/lib/
-/vendor/
 .Python
 build/
 develop-eggs/
@@ -60,51 +58,26 @@ local_settings.py
 db.sqlite3
 db.sqlite3-journal
 
-# Environments
-.env
-.venv
-env/
-venv/
-ENV/
-env.bak/
-venv.bak/
-
 # IDE
 .vscode/
 .idea/
 .trae/
 
-# Database
+# 项目统一环境目录（依赖包、数据库、上传文件，不提交 Git）
+/env/
+
+# 旧目录（迁移后勿再使用）
+/lib/
 /database/
-*.db
-*.sqlite
+/uploads/
+venv/
+venv2/
+.venv/
+.env/
 
 # Project specific
-/uploads/
-/lib/
-/vendor/
 baidnews.html
 baidu_test.html
 diag_baidu.html
 raw_baidu_resp.html
 *.log
-
-# Python 虚拟环境
-venv/
-venv2/
-.env/
-.venv/
-
-# Python 缓存文件
-__pycache__/
-*.pyc
-*.pyo
-*.pyd
-
-# 虚拟环境
-venv2/
-# 数据库文件
-database/
-
-venv/
-database/

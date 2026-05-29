@@ -1,19 +1,35 @@
 import json
 import sqlite3
-from app.models.db import get_connection
+from app.models.db import as_int, get_connection, row_to_dict
+
+
+def _rows_to_dicts(rows):
+    return [row_to_dict(row) for row in rows]
+
 
 class WatchRepository:
     @staticmethod
     def get_all_sources():
         with get_connection() as conn:
             rows = conn.execute("SELECT * FROM watch_sources ORDER BY id DESC").fetchall()
-            return [dict(row) for row in rows]
+            return _rows_to_dicts(rows)
+
+    @staticmethod
+    def get_active_sources():
+        """获取启用状态的瞭望源（供采集页使用）。"""
+        sources = WatchRepository.get_all_sources()
+        active = []
+        for s in sources:
+            status = s.get("status", 1)
+            if status is None or int(status) == 1:
+                active.append(s)
+        return active
 
     @staticmethod
     def get_source_by_id(source_id):
         with get_connection() as conn:
             row = conn.execute("SELECT * FROM watch_sources WHERE id = ?", (source_id,)).fetchone()
-            return dict(row) if row else None
+            return row_to_dict(row) if row else None
 
     @staticmethod
     def add_source(name, url_pattern, headers=None, params=None):
@@ -62,20 +78,36 @@ class WatchRepository:
             
             total = conn.execute(count_query, count_params).fetchone()[0]
             
-            return [dict(row) for row in rows], total
+            return _rows_to_dicts(rows), total
 
     @staticmethod
     def save_collected_data(source_id, keyword, data_list):
+        """保存采集结果，返回实际新入库条数。"""
+        source_id = as_int(source_id)
+        inserted = 0
         with get_connection() as conn:
             for item in data_list:
-                # 检查是否已存在 (简单通过 URL 查重)
-                exists = conn.execute("SELECT id FROM watch_data WHERE url = ?", (item['url'],)).fetchone()
+                url = (item.get("url") or "").strip()
+                if not url:
+                    continue
+                exists = conn.execute(
+                    "SELECT id FROM watch_data WHERE url = ?", (url,)
+                ).fetchone()
                 if not exists:
                     conn.execute(
                         "INSERT INTO watch_data (source_id, keyword, title, content, url, publish_time) VALUES (?, ?, ?, ?, ?, ?)",
-                        (source_id, keyword, item['title'], item.get('content', ''), item['url'], item.get('publish_time', ''))
+                        (
+                            source_id,
+                            keyword,
+                            item.get("title", ""),
+                            item.get("content", ""),
+                            url,
+                            item.get("publish_time", ""),
+                        ),
                     )
+                    inserted += 1
             conn.commit()
+        return inserted
 
     @staticmethod
     def delete_data(data_ids):
@@ -89,8 +121,11 @@ class WatchRepository:
     @staticmethod
     def add_watch_data(source_id, keyword, title, content, url, publish_time, is_auto=0):
         """添加采集数据，支持标记是否自动采集"""
+        source_id = as_int(source_id)
+        url = (url or "").strip()
+        if not url:
+            return False
         with get_connection() as conn:
-            # 检查是否已存在 (简单通过 URL 查重)
             exists = conn.execute("SELECT id FROM watch_data WHERE url = ?", (url,)).fetchone()
             if exists:
                 return False
@@ -128,4 +163,4 @@ class WatchRepository:
             
             total = conn.execute(count_query, count_params).fetchone()[0]
             
-            return [dict(row) for row in rows], total
+            return _rows_to_dicts(rows), total

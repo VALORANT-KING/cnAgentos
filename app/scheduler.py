@@ -1,7 +1,9 @@
 
 # 自动化任务调度器
+import json
 import logging
 import random
+import re
 import time
 from datetime import datetime
 from apscheduler.schedulers.background import BackgroundScheduler
@@ -31,62 +33,96 @@ def get_scheduler():
         _scheduler = BackgroundScheduler()
     return _scheduler
 
-def _parse_baidu_news(soup, keyword, source_id):
-    """解析新闻数据 - 支持多种采集源"""
-    news_list = []
-    try:
-        # 百度新闻解析
-        items = soup.select("div.result-op, div.c-container")
-        if items:
-            for item in items[:10]:
-                title_elem = item.select_one("h3 a, a")
-                if not title_elem:
+def _parse_baidu_news(html, keyword, source_id):
+    """解析新闻数据 - 支持 s-data JSON、BeautifulSoup、正则三种方式"""
+    items = []
+
+    s_data_matches = re.findall(r'<!--s-data:(\{.*?\})-->', html)
+    for match in s_data_matches:
+        try:
+            data = json.loads(match)
+            if 'title' in data and 'titleUrl' in data:
+                title = re.sub(r'<.*?>', '', data['title'])
+                url = data['titleUrl']
+                if url and title:
+                    items.append({
+                        "title": title,
+                        "url": url if url.startswith("http") else "https://www.baidu.com" + url,
+                        "content": data.get('summary', ''),
+                        "publish_time": data.get('dispTime', '')
+                    })
+        except Exception:
+            continue
+
+    if len(items) < 3:
+        soup = BeautifulSoup(html, 'html.parser')
+        results = soup.select('div[mu], .result-op, .c-container')
+        for res in results:
+            try:
+                title_el = res.select_one('h3 a') or res.select_one('a[href]')
+                if not title_el:
                     continue
-                title = title_elem.get_text(strip=True)
-                url = title_elem.get("href", "")
-                if not url or not title:
+                url = title_el.get('href', '')
+                title = title_el.get_text(strip=True)
+                if not url or 'baidu.com' in url or url.startswith('/') or len(title) < 5:
                     continue
-                content_elem = item.select_one("div.c-abstract, p")
-                content = content_elem.get_text(strip=True) if content_elem else ""
-                time_elem = item.select_one("span.c-author, span.c-time")
-                publish_time = time_elem.get_text(strip=True) if time_elem else ""
-                news_list.append({
-                    "source_id": source_id,
-                    "keyword": keyword,
+                if any(item['url'] == url for item in items):
+                    continue
+
+                content = ""
+                content_el = res.select_one('.c-font-normal') or res.select_one('.c-abstract')
+                if content_el:
+                    content = content_el.get_text(strip=True)
+
+                publish_time = ""
+                time_el = res.select_one('.c-color-gray2') or res.select_one('.c-showurl')
+                if time_el:
+                    time_text = time_el.get_text(strip=True)
+                    time_match = re.search(r'\d+小时前|\d+分钟前|\d+天前|\d{4}年\d+月\d+日', time_text)
+                    if time_match:
+                        publish_time = time_match.group()
+
+                items.append({
                     "title": title,
-                    "content": content,
                     "url": url if url.startswith("http") else "https://www.baidu.com" + url,
+                    "content": content,
                     "publish_time": publish_time
                 })
-        
-        # 如果没找到数据，尝试其他通用解析方式
-        if not news_list:
-            # 通用的文章列表解析
-            items = soup.select("article, div[class*='item'], li[class*='item'], div[class*='news']")
-            for item in items[:10]:
-                title_elem = item.select_one("h1, h2, h3, h4, a[href]")
-                if not title_elem:
-                    continue
-                title = title_elem.get_text(strip=True)
-                url = title_elem.get("href", "") if title_elem.name == "a" else ""
-                if not url and title_elem.select_one("a"):
-                    url = title_elem.select_one("a").get("href", "")
-                if not title or not url:
-                    continue
-                content_elem = item.select_one("p, div[class*='abstract'], div[class*='content']")
-                content = content_elem.get_text(strip=True) if content_elem else ""
-                news_list.append({
-                    "source_id": source_id,
-                    "keyword": keyword,
-                    "title": title,
-                    "content": content,
+            except Exception:
+                continue
+
+    if len(items) < 3:
+        regex_matches = re.findall(r'<h3.*?href="(http.*?)".*?>(.*?)</a>', html, re.S)
+        for url, title in regex_matches:
+            if 'baidu.com' in url or len(title) < 5:
+                continue
+            clean_title = re.sub(r'<.*?>', '', title).strip()
+            if not any(item['url'] == url for item in items):
+                items.append({
+                    "title": clean_title,
                     "url": url if url.startswith("http") else "https://www.baidu.com" + url,
+                    "content": "",
                     "publish_time": ""
                 })
-                
-    except Exception as e:
-        print(f"解析新闻数据出错: {e}")
-    return news_list
+
+    unique_items = []
+    seen_urls = set()
+    for item in items:
+        if item['url'] not in seen_urls:
+            unique_items.append(item)
+            seen_urls.add(item['url'])
+
+    result = []
+    for item in unique_items:
+        result.append({
+            "source_id": source_id,
+            "keyword": keyword,
+            "title": item["title"],
+            "content": item["content"],
+            "url": item["url"],
+            "publish_time": item["publish_time"]
+        })
+    return result
 
 def execute_auto_task(task_id):
     """执行自动化任务"""
@@ -110,7 +146,6 @@ def execute_auto_task(task_id):
         url_pattern = source["url_pattern"]
         headers = source.get("headers", "{}")
         
-        import json
         try:
             headers = json.loads(headers)
         except:
@@ -124,7 +159,7 @@ def execute_auto_task(task_id):
         default_headers = {
             "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
             "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
-            "Accept-Encoding": "gzip, deflate, br",
+            "Accept-Encoding": "gzip, deflate",
             "Connection": "keep-alive",
             "Upgrade-Insecure-Requests": "1",
             "Sec-Fetch-Dest": "document",
@@ -140,7 +175,7 @@ def execute_auto_task(task_id):
             if key not in headers:
                 headers[key] = value
         
-        url = url_pattern.replace("{关键词}", task["keyword"]).replace("{分页}", "1")
+        url = url_pattern.replace("{关键词}", task["keyword"]).replace("{分页}", "0")
         
         # 添加更长的随机延迟，避免请求过快
         time.sleep(random.uniform(3, 7))
@@ -175,8 +210,7 @@ def execute_auto_task(task_id):
         
         response.raise_for_status()
         
-        soup = BeautifulSoup(response.text, "html.parser")
-        news_list = _parse_baidu_news(soup, task["keyword"], source["id"])
+        news_list = _parse_baidu_news(response.text, task["keyword"], source["id"])
         
         total_found = len(news_list[:task["collect_count"]])
         total_saved = 0
@@ -200,9 +234,12 @@ def execute_auto_task(task_id):
         if total_saved > 0:
             log_status = "success"
             log_msg = "成功采集 " + str(total_saved) + " 条新数据（共发现 " + str(total_found) + " 条）"
-        else:
+        elif total_found > 0:
             log_status = "warning"
             log_msg = "未发现新数据（共发现 " + str(total_found) + " 条，均为重复）"
+        else:
+            log_status = "warning"
+            log_msg = "未解析到任何数据，请检查采集源配置或稍后重试"
         AutoTaskRepository.add_log(
             task_id,
             task["name"],

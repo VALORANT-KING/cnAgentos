@@ -92,7 +92,8 @@ html, body { height: 100%; margin: 0; font-family: -apple-system, BlinkMacSystem
 .im-msg.mine .im-msg-bubble { background: #95ec69; border-top-right-radius: 2px; }
 .im-msg.employee .im-msg-bubble { background: #fff7e6; border: 1px solid #ffd591; }
 .im-msg.employee .im-msg-bubble:has(.im-weather-card),
-.im-msg.employee .im-msg-bubble:has(.im-toxic-card) {
+.im-msg.employee .im-msg-bubble:has(.im-toxic-card),
+.im-msg.employee .im-msg-bubble:has(.im-music-card) {
     padding: 0;
     background: transparent;
     border: none;
@@ -200,6 +201,15 @@ html, body { height: 100%; margin: 0; font-family: -apple-system, BlinkMacSystem
 .im-toxic-card { background: linear-gradient(135deg, #434343, #000); color: #fff; border-radius: 12px; padding: 16px; width: fit-content; max-width: 300px; }
 .im-toxic-title { font-size: 13px; opacity: 0.7; margin-bottom: 8px; }
 .im-toxic-card p { margin: 0; font-size: 15px; line-height: 1.6; font-style: italic; }
+
+/* 音乐卡片 */
+.im-music-card { background: linear-gradient(135deg, #667eea, #764ba2); color: #fff; border-radius: 12px; width: fit-content; max-width: 320px; }
+.im-music-inner { display: flex; align-items: center; gap: 12px; padding: 16px; }
+.im-music-info { flex: 1; min-width: 0; }
+.im-music-song { font-size: 18px; font-weight: bold; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.im-music-singer { font-size: 14px; opacity: 0.9; margin-top: 4px; }
+.im-music-btn { display: inline-block; margin-top: 8px; padding: 6px 16px; background: #fff; color: #667eea; border-radius: 20px; text-decoration: none; font-size: 13px; font-weight: bold; }
+.im-music-btn:hover { background: #f0f0f0; color: #667eea; }
 
 /* @数字员工唤起提示 */
 .employee-hint { position: absolute; bottom: 100%; left: 0; right: 0; background: #fff; border: 1px solid #e8e8e8; border-radius: 8px 8px 0 0; max-height: 200px; overflow-y: auto; display: none; box-shadow: 0 -4px 12px rgba(0,0,0,0.1); z-index: 20; }

@@ -36,7 +36,16 @@
 
     // 手势历史记录，用于稳定性检查
     var gestureHistory = [];
-    var GESTURE_HISTORY_LENGTH = 5; // 需要连续检测到相同手势才触发
+    var holdHistory = [];
+    var GESTURE_HISTORY_LENGTH = 5;
+    var GESTURE_HOLD_LENGTH = 14;
+    var COOLDOWN_MS = 2000;
+    var RELEASE_FRAMES_REQUIRED = 10;
+
+    var cooldownUntil = 0;
+    var waitingForRelease = false;
+    var noGestureFrames = 0;
+    var commandModeEnabled = false;
 
     /**
      * 初始化手势识别系统
@@ -189,7 +198,61 @@
         }
         
         gestureHistory = [];
+        holdHistory = [];
+        cooldownUntil = 0;
+        waitingForRelease = false;
+        noGestureFrames = 0;
         triggerCallback('stopped');
+    }
+
+    function setCommandModeEnabled(enabled) {
+        commandModeEnabled = !!enabled;
+        gestureHistory = [];
+        holdHistory = [];
+        waitingForRelease = false;
+        noGestureFrames = 0;
+    }
+
+    function isCommandModeEnabled() {
+        return commandModeEnabled;
+    }
+
+    function updateReleaseState(hasGesture) {
+        if (hasGesture) {
+            noGestureFrames = 0;
+            return;
+        }
+        noGestureFrames++;
+        if (noGestureFrames >= RELEASE_FRAMES_REQUIRED) {
+            waitingForRelease = false;
+        }
+    }
+
+    function isAllSameGesture(history, gesture) {
+        for (var i = 0; i < history.length; i++) {
+            if (history[i] !== gesture) {
+                return false;
+            }
+        }
+        return history.length > 0;
+    }
+
+    function enterGestureCooldown() {
+        cooldownUntil = Date.now() + COOLDOWN_MS;
+        waitingForRelease = true;
+        gestureHistory = [];
+        holdHistory = [];
+        state.lastGesture = null;
+    }
+
+    function canTriggerGesture() {
+        if (waitingForRelease) {
+            return false;
+        }
+        if (Date.now() < cooldownUntil) {
+            return false;
+        }
+        return true;
     }
 
     /**
@@ -197,31 +260,47 @@
      */
     function onHandsResults(results) {
         if (!state.isRunning) return;
-        
+
         drawCanvas(results);
         var gesture = detectGesture(results);
-        
-        if (gesture) {
-            // 添加到历史记录
-            gestureHistory.push(gesture);
-            if (gestureHistory.length > GESTURE_HISTORY_LENGTH) {
-                gestureHistory.shift();
-            }
-            
-            // 检查是否连续检测到相同手势
-            var stableGesture = getStableGesture();
-            if (stableGesture && stableGesture !== state.lastGesture) {
-                state.lastGesture = stableGesture;
-                clearTimeout(state.gestureTimer);
-                
-                state.gestureTimer = setTimeout(function() {
-                    triggerCallback('gesture', stableGesture);
-                    state.lastGesture = null;
-                }, 300);
-            }
-        } else {
-            // 清空历史记录
+        updateReleaseState(!!gesture);
+
+        if (!gesture) {
             gestureHistory = [];
+            holdHistory = [];
+            return;
+        }
+
+        if (!canTriggerGesture()) {
+            return;
+        }
+
+        gestureHistory.push(gesture);
+        if (gestureHistory.length > GESTURE_HISTORY_LENGTH) {
+            gestureHistory.shift();
+        }
+
+        var stableGesture = getStableGesture();
+        if (!stableGesture) {
+            return;
+        }
+
+        if (!commandModeEnabled) {
+            holdHistory.push(stableGesture);
+            if (holdHistory.length > GESTURE_HOLD_LENGTH) {
+                holdHistory.shift();
+            }
+            if (holdHistory.length === GESTURE_HOLD_LENGTH && isAllSameGesture(holdHistory, stableGesture)) {
+                enterGestureCooldown();
+                triggerCallback('gesture_hold', stableGesture);
+            }
+            return;
+        }
+
+        if (stableGesture !== state.lastGesture) {
+            state.lastGesture = stableGesture;
+            enterGestureCooldown();
+            triggerCallback('gesture', stableGesture);
         }
     }
     
@@ -492,6 +571,8 @@
         stop: stop,
         on: on,
         getCanvas: getCanvas,
+        setCommandModeEnabled: setCommandModeEnabled,
+        isCommandModeEnabled: isCommandModeEnabled,
         isRunning: function() { return state.isRunning; },
         isInitialized: function() { return state.isInitialized; }
     };

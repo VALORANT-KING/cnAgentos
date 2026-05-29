@@ -229,15 +229,14 @@
 
         <div class="options-panel">
             <div class="option-group">
-                <span class="option-label">选择采集源</span>
-                <div class="source-grid">
-                    {% for source in sources %}
-                    <label class="source-item active">
-                        <input type="checkbox" name="source_ids" value="{{ source['id'] }}" checked>
-                        <i class="fas fa-link"></i>
-                        <span>{{ source['name'] }}</span>
-                    </label>
-                    {% end %}
+                <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.75rem;">
+                    <span class="option-label" style="margin-bottom:0;">选择采集源</span>
+                    <button type="button" id="refreshSourcesBtn" style="background:transparent;border:1px solid rgba(56,189,248,0.5);color:var(--accent);padding:4px 12px;border-radius:8px;cursor:pointer;font-size:0.8rem;">
+                        <i class="fas fa-sync-alt"></i> 同步瞭望源
+                    </button>
+                </div>
+                <div class="source-grid" id="sourceGrid">
+                    <span style="color:var(--text-dim);font-size:0.875rem;">正在加载瞭望源...</span>
                 </div>
             </div>
 
@@ -260,22 +259,61 @@
             const startBtn = document.getElementById('startBtn');
             const keywordInput = document.getElementById('keyword');
             const statusMsg = document.getElementById('statusMsg');
-            const sourceItems = document.querySelectorAll('.source-item');
+            const sourceGrid = document.getElementById('sourceGrid');
+            const refreshSourcesBtn = document.getElementById('refreshSourcesBtn');
 
-            // 切换源选择样式
-            sourceItems.forEach(item => {
-                item.addEventListener('click', (e) => {
-                    const checkbox = item.querySelector('input');
-                    // 因为 label 已经绑定了 checkbox，点击时 checkbox 会自动切换
-                    // 我们只需要更新样式
-                    setTimeout(() => {
-                        if (checkbox.checked) {
-                            item.classList.add('active');
-                        } else {
-                            item.classList.remove('active');
-                        }
-                    }, 10);
+            function bindSourceItemEvents() {
+                document.querySelectorAll('.source-item').forEach(item => {
+                    item.addEventListener('click', () => {
+                        const checkbox = item.querySelector('input');
+                        setTimeout(() => {
+                            if (checkbox.checked) {
+                                item.classList.add('active');
+                            } else {
+                                item.classList.remove('active');
+                            }
+                        }, 10);
+                    });
                 });
+            }
+
+            function loadSources() {
+                sourceGrid.innerHTML = '<span style="color:var(--text-dim);font-size:0.875rem;">正在加载瞭望源...</span>';
+                fetch('/admin/watch/collect/sources', { credentials: 'same-origin' })
+                    .then(r => r.json())
+                    .then(res => {
+                        if (res.code !== 0 || !res.data || !res.data.length) {
+                            sourceGrid.innerHTML = '<span style="color:#f87171;font-size:0.875rem;">暂无启用的瞭望源，请先在「瞭望源管理」中添加并启用</span>';
+                            return;
+                        }
+                        var html = '';
+                        res.data.forEach(function(source) {
+                            html += '<label class="source-item active">' +
+                                '<input type="checkbox" name="source_ids" value="' + source.id + '" checked>' +
+                                '<i class="fas fa-link"></i>' +
+                                '<span>' + escapeHtml(source.name || '') + '</span>' +
+                                '</label>';
+                        });
+                        sourceGrid.innerHTML = html;
+                        bindSourceItemEvents();
+                    })
+                    .catch(function() {
+                        sourceGrid.innerHTML = '<span style="color:#f87171;">加载瞭望源失败，请刷新页面重试</span>';
+                    });
+            }
+
+            function escapeHtml(str) {
+                var div = document.createElement('div');
+                div.textContent = str;
+                return div.innerHTML;
+            }
+
+            loadSources();
+            refreshSourcesBtn.addEventListener('click', loadSources);
+            document.addEventListener('visibilitychange', function() {
+                if (!document.hidden) {
+                    loadSources();
+                }
             });
 
             function getCookie(name) {

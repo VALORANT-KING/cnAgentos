@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>数据库配置</title>
+    <link rel="stylesheet" href="/static/dist/layui-v2.13.6/layui/css/layui.css">
+</head>
+<body class="layui-layout-body" style="padding: 15px;">
+    <div class="layui-card">
+        <div class="layui-card-header">数据库配置与切换</div>
+        <div class="layui-card-body">
+            <div class="layui-form" style="margin-bottom: 12px;">
+                <blockquote class="layui-elem-quote">
+                    默认使用 SQLite（<code>env/database/app.db</code>，由 <code>init_db()</code> 初始化）。
+                    切换 MySQL 时会自动从 SQLite 同步全部表结构与数据，与 SQLite 保持一致；
+                    MySQL 行也可点击「同步」手动重新从 SQLite 拉取。
+                </blockquote>
+            </div>
+            <button class="layui-btn" id="btnAdd">新增配置</button>
+            <table id="dbTable" lay-filter="dbTable"></table>
+        </div>
+    </div>
+
+    <script src="/static/dist/layui-v2.13.6/layui/layui.js"></script>
+    <script>
+        layui.use(['table', 'form', 'layer', 'jquery'], function(){
+            var table = layui.table, form = layui.form, layer = layui.layer, $ = layui.jquery;
+
+            function getCookie(name) {
+                var r = document.cookie.match("\\b" + name + "=([^;]*)\\b");
+                return r ? r[1] : undefined;
+            }
+
+            function getXsrfToken() {
+                var token = getCookie("_xsrf");
+                if (token) {
+                    try { token = decodeURIComponent(token); } catch (e) {}
+                }
+                return token;
+            }
+
+            function withXsrf(data) {
+                var payload = data || {};
+                payload._xsrf = getXsrfToken();
+                return payload;
+            }
+
+            function postWithXsrf(url, data, callback) {
+                $.post(url, withXsrf(data), callback);
+            }
+
+            $.ajaxSetup({
+                beforeSend: function(xhr, settings) {
+                    if (settings.type === 'POST') {
+                        var token = getXsrfToken();
+                        if (token) {
+                            xhr.setRequestHeader("X-XSRFToken", token);
+                        }
+                    }
+                }
+            });
+
+            table.render({
+                elem: '#dbTable',
+                url: '/admin/db/config/list',
+                cols: [[
+                    {field: 'id', title: 'ID', width: 70},
+                    {field: 'name', title: '配置名称', width: 160},
+                    {field: 'db_type', title: '类型', width: 90, templet: function(d){
+                        return d.db_type === 'mysql'
+                            ? '<span class="layui-badge layui-bg-orange">MySQL</span>'
+                            : '<span class="layui-badge layui-bg-green">SQLite</span>';
+                    }},
+                    {field: 'database_name', title: '库名/文件路径'},
+                    {field: 'host', title: '主机', width: 120},
+                    {field: 'port', title: '端口', width: 80},
+                    {field: 'is_active', title: '状态', width: 100, templet: function(d){
+                        return d.is_active === 1
+                            ? '<span class="layui-badge layui-bg-blue">当前使用</span>'
+                            : '<span class="layui-badge layui-bg-gray">未启用</span>';
+                    }},
+                    {field: 'create_at', title: '创建时间', width: 170},
+                    {title: '操作', width: 320, templet: function(d){
+                        var html = '<a class="layui-btn layui-btn-xs" lay-event="test">测试</a>';
+                        html += '<a class="layui-btn layui-btn-xs" lay-event="edit">编辑</a>';
+                        if (d.db_type === 'mysql') {
+                            html += '<a class="layui-btn layui-btn-warm layui-btn-xs" lay-event="sync">同步</a>';
+                        }
+                        if (d.is_active !== 1) {
+                            html += '<a class="layui-btn layui-btn-normal layui-btn-xs" lay-event="switch">切换</a>';
+                            html += '<a class="layui-btn layui-btn-danger layui-btn-xs" lay-event="del">删除</a>';
+                        }
+                        return html;
+                    }}
+                ]]
+            });
+
+            $('#btnAdd').click(function(){
+                openDbForm('新增数据库配置', {});
+            });
+
+            table.on('tool(dbTable)', function(obj){
+                var d = obj.data;
+                if (obj.event === 'edit') {
+                    openDbForm('编辑数据库配置', d);
+                } else if (obj.event === 'test') {
+                    postWithXsrf('/admin/db/config/test', {id: d.id}, function(res){
+                        layer.msg(res.msg, {icon: res.code === 0 ? 1 : 2});
+                    });
+                } else if (obj.event === 'sync') {
+                    layer.confirm('从 SQLite 全量同步到该 MySQL？将覆盖 MySQL 中同名表及数据。', function(index){
+                        postWithXsrf('/admin/db/config/sync', {id: d.id, force: '1'}, function(res){
+                            layer.msg(res.msg, {icon: res.code === 0 ? 1 : 2, time: 3000});
+                        });
+                        layer.close(index);
+                    });
+                } else if (obj.event === 'switch') {
+                    layer.confirm('确定切换到「' + d.name + '」吗？切换后系统将使用新数据库连接。', function(index){
+                        postWithXsrf('/admin/db/config/switch', {id: d.id}, function(res){
+                            layer.msg(res.msg, {icon: res.code === 0 ? 1 : 2});
+                            if (res.code === 0) {
+                                table.reload('dbTable');
+                            }
+                        });
+                        layer.close(index);
+                    });
+                } else if (obj.event === 'del') {
+                    layer.confirm('确定删除该配置吗？', function(index){
+                        postWithXsrf('/admin/db/config/delete', {id: d.id}, function(res){
+                            layer.msg(res.msg, {icon: res.code === 0 ? 1 : 2});
+                            if (res.code === 0) {
+                                table.reload('dbTable');
+                            }
+                        });
+                        layer.close(index);
+                    });
+                }
+            });
+
+            function toggleDbFields(layero, dbType) {
+                var isMysql = dbType === 'mysql';
+                layero.find('.mysql-field').toggle(isMysql);
+                layero.find('.sqlite-field').toggle(!isMysql);
+            }
+
+            function openDbForm(title, data) {
+                var dbType = data.db_type || 'sqlite';
+                layer.open({
+                    type: 1,
+                    title: title,
+                    area: ['620px', '520px'],
+                    content: `
+                        <form class="layui-form" style="padding: 20px;" lay-filter="dbForm">
+                            <input type="hidden" name="id" value="${data.id || ''}">
+                            <div class="layui-form-item">
+                                <label class="layui-form-label">配置名称</label>
+                                <div class="layui-input-block">
+                                    <input type="text" name="name" required lay-verify="required" class="layui-input" value="${data.name || ''}">
+                                </div>
+                            </div>
+                            <div class="layui-form-item">
+                                <label class="layui-form-label">数据库类型</label>
+                                <div class="layui-input-block">
+                                    <select name="db_type" lay-filter="dbTypeSelect">
+                                        <option value="sqlite">SQLite</option>
+                                        <option value="mysql">MySQL</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="layui-form-item sqlite-field">
+                                <label class="layui-form-label">文件路径</label>
+                                <div class="layui-input-block">
+                                    <input type="text" name="database_name" placeholder="默认 env/database/app.db" class="layui-input" value="${data.database_name || ''}">
+                                </div>
+                            </div>
+                            <div class="layui-form-item mysql-field">
+                                <label class="layui-form-label">主机</label>
+                                <div class="layui-input-block">
+                                    <input type="text" name="host" placeholder="127.0.0.1" class="layui-input" value="${data.host || ''}">
+                                </div>
+                            </div>
+                            <div class="layui-form-item mysql-field">
+                                <label class="layui-form-label">端口</label>
+                                <div class="layui-input-block">
+                                    <input type="number" name="port" placeholder="3306" class="layui-input" value="${data.port || 3306}">
+                                </div>
+                            </div>
+                            <div class="layui-form-item mysql-field">
+                                <label class="layui-form-label">数据库名</label>
+                                <div class="layui-input-block">
+                                    <input type="text" name="database_name_mysql" placeholder="cn_agentos" class="layui-input" value="${dbType === 'mysql' ? (data.database_name || '') : ''}">
+                                </div>
+                            </div>
+                            <div class="layui-form-item mysql-field">
+                                <label class="layui-form-label">用户名</label>
+                                <div class="layui-input-block">
+                                    <input type="text" name="username" class="layui-input" value="${data.username || ''}">
+                                </div>
+                            </div>
+                            <div class="layui-form-item mysql-field">
+                                <label class="layui-form-label">密码</label>
+                                <div class="layui-input-block">
+                                    <input type="password" name="password" placeholder="编辑时留空表示不修改" class="layui-input" value="">
+                                </div>
+                            </div>
+                            <div class="layui-form-item">
+                                <div class="layui-input-block">
+                                    <button type="button" class="layui-btn" id="btnSaveDb">保存</button>
+                                    <button type="button" class="layui-btn layui-btn-primary" id="btnTestDb">测试连接</button>
+                                </div>
+                            </div>
+                        </form>
+                    `,
+                    success: function(layero, index){
+                        form.render(null, 'dbForm');
+                        layero.find('select[name=db_type]').val(dbType);
+                        form.render('select');
+                        toggleDbFields(layero, dbType);
+
+                        form.on('select(dbTypeSelect)', function(obj){
+                            toggleDbFields(layero, obj.value);
+                        });
+
+                        layero.find('#btnTestDb').click(function(){
+                            var payload = withXsrf(collectForm(layero));
+                            postWithXsrf('/admin/db/config/test', payload, function(res){
+                                layer.msg(res.msg, {icon: res.code === 0 ? 1 : 2});
+                            });
+                        });
+
+                        layero.find('#btnSaveDb').click(function(){
+                            var payload = collectForm(layero);
+                            if (!payload.name) {
+                                return layer.msg('请填写配置名称');
+                            }
+                            var url = payload.id ? '/admin/db/config/update' : '/admin/db/config/add';
+                            postWithXsrf(url, payload, function(res){
+                                layer.msg(res.msg, {icon: res.code === 0 ? 1 : 2});
+                                if (res.code === 0) {
+                                    layer.close(index);
+                                    table.reload('dbTable');
+                                }
+                            });
+                        });
+                    }
+                });
+            }
+
+            function collectForm(layero) {
+                var dbType = layero.find('select[name=db_type]').val();
+                var databaseName = dbType === 'mysql'
+                    ? layero.find('input[name=database_name_mysql]').val()
+                    : layero.find('input[name=database_name]').val();
+                return {
+                    id: layero.find('input[name=id]').val(),
+                    name: layero.find('input[name=name]').val(),
+                    db_type: dbType,
+                    host: layero.find('input[name=host]').val(),
+                    port: layero.find('input[name=port]').val(),
+                    database_name: databaseName,
+                    username: layero.find('input[name=username]').val(),
+                    password: layero.find('input[name=password]').val()
+                };
+            }
+        });
+    </script>
+</body>
+</html>

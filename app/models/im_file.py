@@ -1,10 +1,10 @@
 import hashlib
 import os
 
-from app.models.db import get_connection, _project_root
+from app.models.db import get_connection, _env_path
 
 
-UPLOAD_DIR = os.path.join(_project_root(), "uploads", "im")
+UPLOAD_DIR = _env_path("uploads", "im")
 
 
 class ImFileRepository:

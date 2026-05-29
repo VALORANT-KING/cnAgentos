@@ -195,6 +195,35 @@ def _call_weather_for_im(employee, param):
         return f"❌ 天气查询出错: {str(e)}"
 
 
+def _call_music_for_im(employee, param):
+    import requests
+    try:
+        api_id = employee.get("api_service_id", 0)
+        if not api_id:
+            return "❌ 音乐员工未关联 API 服务"
+        from app.models.api_service import ApiServiceRepository
+        api = ApiServiceRepository.get_by_id(api_id)
+        if not api:
+            return "❌ 音乐 API 服务不存在"
+        safe_headers = {"accept-encoding": "gzip, deflate", "user-agent": "Mozilla/5.0"}
+        resp = requests.get(api["url"], headers=safe_headers, timeout=10, verify=False)
+        if resp.status_code != 200:
+            return f"❌ 音乐 API 请求失败 (HTTP {resp.status_code})"
+        raw = resp.json()
+        data = raw.get("data", raw)
+        card = {
+            "_im_card": "music",
+            "song": data.get("song", ""),
+            "singer": data.get("singer", ""),
+            "cover": data.get("cover", ""),
+            "music_url": data.get("Music", ""),
+            "song_id": data.get("id", ""),
+        }
+        return json.dumps(card, ensure_ascii=False)
+    except Exception as e:
+        return f"❌ 音乐查询出错: {str(e)}"
+
+
 def _build_ai_messages(employee, user_content, user_id, receiver_type, receiver_id):
     """构建 AI 多轮对话 messages 列表"""
     prompt = employee.get("prompt", "")
@@ -258,6 +287,8 @@ def call_employee_reply(employee, param, user_id=0, receiver_type="group", recei
     if employee["category"] == "普通" and agent_type == "api":
         if employee.get("alias") == "@天气" or employee.get("name") == "天气":
             return _call_weather_for_im(employee, param)
+        if employee.get("alias") == "@音乐" or employee.get("name") == "音乐":
+            return _call_music_for_im(employee, param)
         return _call_api_employee(employee, param)
 
     return f"不支持的数字员工类型: {employee.get('name')}"
@@ -753,6 +784,7 @@ class ImWebSocketHandler(tornado.websocket.WebSocketHandler):
         bot_msg["sender_id"] = 0
         payload = _message_payload(bot_msg)
         if receiver_type == "user":
+            broadcast_user(receiver_id, payload)
             broadcast_user(self.user["id"], payload)
         else:
             broadcast_group(receiver_id, payload)

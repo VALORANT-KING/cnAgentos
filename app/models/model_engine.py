@@ -1,4 +1,4 @@
-from app.models.db import get_connection
+from app.models.db import as_int, get_connection
 
 class ModelEngineRepository:
     @staticmethod
@@ -119,7 +119,7 @@ class ModelEngineRepository:
                 row = conn.execute(
                     "SELECT is_default FROM model_engines WHERE id = ?", (engine_id,)
                 ).fetchone()
-                if row and row["is_default"] == 1:
+                if row and as_int(row["is_default"]) == 1:
                     return False
                 conn.execute("DELETE FROM model_engines WHERE id = ?", (engine_id,))
                 conn.commit()
